@@ -8,7 +8,6 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
-import android.graphics.Bitmap;
 import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
@@ -27,7 +26,6 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
 import android.text.Layout;
 import android.text.Spannable;
@@ -41,10 +39,10 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 
+import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import org.checkerframework.checker.units.qual.C;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LiteMode;
@@ -65,6 +63,9 @@ import org.telegram.ui.Components.LinkSpanDrawable;
 import org.telegram.ui.Components.RLottieDrawable;
 import org.telegram.ui.Components.TypefaceSpan;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+
 public class HintView2 extends View {
 
     // direction of an arrow to point
@@ -75,6 +76,19 @@ public class HintView2 extends View {
     public static final int DIRECTION_RIGHT = 2;
     public static final int DIRECTION_BOTTOM = 3;
     // the layout (bounds of hint) are up to a user of this component
+
+    @IntDef({NONE, REPEAT_ON_SHOW, LOOPED})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface BounceAnimationRepeatMode {}
+    public static final int NONE = -1;
+    public static final int REPEAT_ON_SHOW = 0;
+    public static final int LOOPED = 1;
+
+    @IntDef({ONCE, DOUBLE})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface BounceAnimationCount {}
+    public static final int ONCE = 0;
+    public static final int DOUBLE = 1;
 
     private int direction;
     private float joint = .5f, jointTranslate = 0;
@@ -118,7 +132,10 @@ public class HintView2 extends View {
     private float textX, textY;
 
     private boolean hideByTouch = true;
-    private boolean repeatedBounce = true;
+    @BounceAnimationRepeatMode
+    private int bounceRepeatMode = REPEAT_ON_SHOW;
+    @BounceAnimationCount
+    private int bounceCount = ONCE;
 
     private boolean shown;
     private AnimatedFloat show = new AnimatedFloat(this, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
@@ -465,8 +482,13 @@ public class HintView2 extends View {
         return this;
     }
 
-    public HintView2 setBounce(boolean enable) {
-        repeatedBounce = enable;
+    public HintView2 setBounceRepeatMode(@BounceAnimationRepeatMode int mode) {
+        bounceRepeatMode = mode;
+        return this;
+    }
+
+    public HintView2 setBounceCount(@BounceAnimationCount int count) {
+        bounceCount = count;
         return this;
     }
 
@@ -522,9 +544,8 @@ public class HintView2 extends View {
 
     public HintView2 show() {
         prepareBlur();
-        if (shown) {
-            bounceShow();
-        }
+        checkBounceAnimation();
+
         AndroidUtilities.makeAccessibilityAnnouncement(getText());
         shown = true;
         invalidate();
@@ -542,28 +563,45 @@ public class HintView2 extends View {
 
     private ValueAnimator bounceAnimator;
     private float bounceT = 1;
-    private void bounceShow() {
-        if (!repeatedBounce) {
+    private void checkBounceAnimation() {
+        if (bounceRepeatMode == NONE || bounceRepeatMode == REPEAT_ON_SHOW && !shown) {
             return;
         }
         if (bounceAnimator != null) {
             bounceAnimator.cancel();
             bounceAnimator = null;
         }
-        bounceAnimator = ValueAnimator.ofFloat(0, 1);
+        if (bounceCount == DOUBLE) {
+            bounceAnimator = ValueAnimator.ofFloat(1, 1.1F, 1, 1.1F, 1);
+            bounceAnimator.setDuration(2500);
+        } else {
+            bounceAnimator = ValueAnimator.ofFloat(1, 1.1F);
+            bounceAnimator.setDuration(300);
+        }
+
+        if (bounceRepeatMode == LOOPED) {
+            bounceAnimator.setStartDelay(1000);
+        }
+
         bounceAnimator.addUpdateListener(anm -> {
-            bounceT = Math.max(1, (float) anm.getAnimatedValue());
-            invalidate();
+            float v = Math.max(1, (float) anm.getAnimatedValue());
+            if (bounceT != v) {
+                bounceT = v;
+                invalidate();
+            }
         });
         bounceAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
                 bounceT = 1;
                 invalidate();
+                if (bounceAnimator != null && isAttachedToWindow() && shown && bounceRepeatMode == LOOPED) {
+                    bounceAnimator.setStartDelay(1000);
+                    bounceAnimator.start();
+                }
             }
         });
         bounceAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_BACK);
-        bounceAnimator.setDuration(300);
         bounceAnimator.start();
     }
 
@@ -579,6 +617,10 @@ public class HintView2 extends View {
         shown = false;
         if (!animated) {
             show.set(shown, false);
+        }
+        if (bounceAnimator != null) {
+            bounceAnimator.cancel();
+            bounceAnimator = null;
         }
         invalidate();
         if (onHidden != null) {
@@ -651,6 +693,10 @@ public class HintView2 extends View {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        if (bounceAnimator != null) {
+            bounceAnimator.cancel();
+            bounceAnimator = null;
+        }
         AnimatedEmojiSpan.release(this, emojiGroupedSpans);
     }
 

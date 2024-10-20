@@ -222,7 +222,6 @@ import org.telegram.ui.Cells.MentionCell;
 import org.telegram.ui.Cells.ProfileChannelCell;
 import org.telegram.ui.Cells.ShareDialogCell;
 import org.telegram.ui.Cells.StickerCell;
-import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextSelectionHelper;
 import org.telegram.ui.Components.*;
 import org.telegram.ui.Components.FloatingDebug.FloatingDebugController;
@@ -8435,18 +8434,22 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             updateSearchListEmptyView();
         }
 
-        if (needsShowStartBotHint()) {
+        if (needsShowStartBotButton()) {
             startBotHint = new HintView2(context, HintView2.DIRECTION_BOTTOM)
                     .setMultilineText(false)
                     .setText(LocaleController.getString(R.string.StartBotHint))
                     .setIcon(ContextCompat.getDrawable(context, R.drawable.tap_here_arrow_down), 14, 14)
                     .setIconMargin(8)
+                    .setDuration(-1)
                     .setTextAlign(Layout.Alignment.ALIGN_CENTER)
                     .setHideByTouch(true)
                     .setCloseButton(false)
                     .setBgColor(getThemedColor(Theme.key_undo_background))
                     .setInnerPadding(12, 10, 12, 10)
                     .setRounding(10);
+            if (SharedConfig.getDevicePerformanceClass() > SharedConfig.PERFORMANCE_CLASS_LOW) {
+                startBotHint.setBounceRepeatMode(HintView2.LOOPED).setBounceCount(HintView2.DOUBLE);
+            }
             contentView.addView(startBotHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL, 16, 0, 16, 8));
         }
 
@@ -16704,6 +16707,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 if (botMessageHint != null && botMessageHint.getVisibility() == View.VISIBLE) {
                     super.drawChild(canvas, botMessageHint, SystemClock.uptimeMillis());
                 }
+                if (startBotHint != null && startBotHint.getVisibility() == View.VISIBLE) {
+                    super.drawChild(canvas, startBotHint, SystemClock.uptimeMillis());
+                }
                 if (chatActivityEnterView != null && chatActivityEnterView.birthdayHint != null) {
                     canvas.save();
                     canvas.translate(chatActivityEnterView.getX() + chatActivityEnterView.birthdayHint.getX(), chatActivityEnterView.getY() + chatActivityEnterView.birthdayHint.getY());
@@ -24560,17 +24566,11 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         }
     }
 
-    private boolean isStartBotHintShown = false;
     private void checkStartBotHint() {
-        if (needsShowStartBotHint() && startBotHint != null) {
+        if (needsShowStartBotButton() && startBotHint != null) {
             startBotHint.setTranslationY(-bottomOverlayChat.getHeight());
-            isStartBotHintShown = true;
             startBotHint.show();
         }
-    }
-
-    private boolean needsShowStartBotHint() {
-        return !isStartBotHintShown && needsShowStartBotButton();
     }
 
     private boolean needsShowStartBotButton() {
@@ -25379,7 +25379,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                     bottomOverlayChat.setVisibility(View.INVISIBLE);
                     chatActivityEnterView.setVisibility(View.VISIBLE);
                     if (startBotHint != null) {
-                        startBotHint.hide(false);
+                        startBotHint.hide();
                     }
                 }
             }
