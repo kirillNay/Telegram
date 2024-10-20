@@ -1482,6 +1482,7 @@
     <string name="ForwardingFromNames">From %s</string>
     <string name="NoWordsRecognized">No words recognized.</string>
     <string name="RateTranscription">Rate transcription</string>
+    <string name="StartBotHint">Tap here to use this bot</string>
     <!--notification-->
     <string name="NotificationMessageGiftCode">%1$s sent you a Gift Code for %2$s of Telegram Premium</string>
     <string name="NotificationMessageGiveaway">%1$s sent you a giveaway of %2$sx %3$sm Premium subscriptions</string>

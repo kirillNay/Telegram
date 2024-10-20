@@ -408,6 +408,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     private HintView2 groupEmojiPackHint;
     private HintView2 botMessageHint;
     private HintView2 factCheckHint;
+    private HintView2 startBotHint;
 
     private int reactionsMentionCount;
     private FrameLayout reactionsMentiondownButton;
@@ -7923,7 +7924,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         bottomOverlayStartButton.setOnClickListener(v -> bottomOverlayChatText.callOnClick());
         bottomOverlayChat.addView(bottomOverlayStartButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER, 8, 8, 8, 8));
 
-        if (currentUser != null && currentUser.bot && !UserObject.isReplyUser(currentUser) && !isInScheduleMode() && chatMode != MODE_PINNED && chatMode != MODE_SAVED) {
+        if (needsShowStartBotButton()) {
             bottomOverlayStartButton.setVisibility(View.VISIBLE);
             bottomOverlayChat.setVisibility(View.VISIBLE);
         }
@@ -8432,6 +8433,21 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             messagesSearchListContainer.setTag(1);
             searchExpandList.setText(LocaleController.getString(R.string.SearchAsChat), false);
             updateSearchListEmptyView();
+        }
+
+        if (needsShowStartBotHint()) {
+            startBotHint = new HintView2(context, HintView2.DIRECTION_BOTTOM)
+                    .setMultilineText(false)
+                    .setText(LocaleController.getString(R.string.StartBotHint))
+                    .setIcon(ContextCompat.getDrawable(context, R.drawable.tap_here_arrow_down), 14, 14)
+                    .setIconMargin(8)
+                    .setTextAlign(Layout.Alignment.ALIGN_CENTER)
+                    .setHideByTouch(true)
+                    .setCloseButton(false)
+                    .setBgColor(getThemedColor(Theme.key_undo_background))
+                    .setInnerPadding(12, 10, 12, 10)
+                    .setRounding(10);
+            contentView.addView(startBotHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL, 16, 0, 16, 8));
         }
 
         Timer.finish(t);
@@ -24474,6 +24490,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         if (savedMessagesHint != null) {
             AndroidUtilities.runOnUIThread(this::checkSavedMessagesHint, 600);
         }
+        if (startBotHint != null) {
+            AndroidUtilities.runOnUIThread(this::checkStartBotHint, 400);
+        }
     }
 
     private boolean checkedSavedMessagesHint;
@@ -24539,6 +24558,23 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 AndroidUtilities.runOnUIThread(ChatActivity.this::checkSavedMessagesTagHint, 2000);
             }
         }
+    }
+
+    private boolean isStartBotHintShown = false;
+    private void checkStartBotHint() {
+        if (needsShowStartBotHint() && startBotHint != null) {
+            startBotHint.setTranslationY(-bottomOverlayChat.getHeight());
+            isStartBotHintShown = true;
+            startBotHint.show();
+        }
+    }
+
+    private boolean needsShowStartBotHint() {
+        return !isStartBotHintShown && needsShowStartBotButton();
+    }
+
+    private boolean needsShowStartBotButton() {
+        return currentUser != null && currentUser.bot && !UserObject.isReplyUser(currentUser) && !isInScheduleMode() && chatMode != MODE_PINNED && chatMode != MODE_SAVED && messages.isEmpty();
     }
 
     @Override
@@ -25342,6 +25378,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 } else {
                     bottomOverlayChat.setVisibility(View.INVISIBLE);
                     chatActivityEnterView.setVisibility(View.VISIBLE);
+                    if (startBotHint != null) {
+                        startBotHint.hide(false);
+                    }
                 }
             }
             if (topViewWasVisible == 1) {

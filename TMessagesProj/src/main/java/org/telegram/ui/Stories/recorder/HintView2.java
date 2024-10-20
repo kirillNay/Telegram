@@ -258,6 +258,10 @@ public class HintView2 extends View {
     }
 
     public HintView2 setIcon(Drawable icon) {
+        return setIcon(icon, icon.getIntrinsicWidth(), icon.getIntrinsicHeight());
+    }
+
+    public HintView2 setIcon(Drawable icon, int widthDp, int heightDp) {
         if (this.icon != null) {
             this.icon.setCallback(null);
         }
@@ -267,9 +271,8 @@ public class HintView2 extends View {
             if (this.icon instanceof RLottieDrawable) {
                 duration = Math.max(duration, ((RLottieDrawable) this.icon).getDuration());
             }
-            // TODO: to be custom
-            this.iconWidth  = this.icon.getIntrinsicWidth();
-            this.iconHeight = this.icon.getIntrinsicHeight();
+            this.iconWidth  = dp(widthDp);
+            this.iconHeight = dp(heightDp);
             this.iconLeft = true;
         }
         return this;
@@ -755,17 +758,17 @@ public class HintView2 extends View {
         if (icon != null) {
             if (iconLeft) {
                 icon.setBounds(
-                    (int) (iconTx + bounds.left + innerPadding.left / 2f),
+                    (int) (iconTx + bounds.left + innerPadding.left),
                     (int) (iconTy + cy - iconHeight / 2f),
-                    (int) (iconTx + bounds.left + innerPadding.left / 2f + iconWidth),
+                    (int) (iconTx + bounds.left + innerPadding.left + iconWidth),
                     (int) (iconTy + cy + iconHeight / 2f)
                 );
                 tx += iconWidth + iconMargin;
             } else {
                 icon.setBounds(
-                    (int) (iconTx + bounds.right - innerPadding.right / 2f - iconWidth),
+                    (int) (iconTx + bounds.right - innerPadding.right - iconWidth),
                     (int) (iconTy + cy - iconHeight / 2f),
-                    (int) (iconTx + bounds.right - innerPadding.right / 2f),
+                    (int) (iconTx + bounds.right - innerPadding.right),
                     (int) (iconTy + cy + iconHeight / 2f)
                 );
             }
