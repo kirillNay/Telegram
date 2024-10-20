@@ -5,9 +5,9 @@ import static org.telegram.messenger.LocaleController.getString;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.Intent;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -34,7 +34,6 @@ import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
@@ -49,16 +48,17 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.DialogCell;
-import org.telegram.ui.ManageLinksActivity;
 
 import java.util.ArrayList;
 
+@SuppressLint("ViewConstructor")
 public class LinkActionView extends LinearLayout {
 
     TextView linkView;
     String link;
     BaseFragment fragment;
     ImageView optionsView;
+    ImageView qrCodeView;
     private final TextView copyView;
     private final TextView shareView;
     private final TextView removeView;
@@ -100,6 +100,16 @@ public class LinkActionView extends LinearLayout {
         optionsView.setContentDescription(LocaleController.getString(R.string.AccDescrMoreOptions));
         optionsView.setScaleType(ImageView.ScaleType.CENTER);
         frameLayout.addView(optionsView, LayoutHelper.createFrame(40, 48, Gravity.RIGHT | Gravity.CENTER_VERTICAL));
+
+        qrCodeView = new ImageView(getContext());
+        qrCodeView.setImageDrawable(ContextCompat.getDrawable(getContext(), R.drawable.msg_qrcode));
+        qrCodeView.setContentDescription(LocaleController.getString(R.string.GetQRCode));
+        qrCodeView.setScaleType(ImageView.ScaleType.CENTER);
+        qrCodeView.setOnClickListener((view) -> showQrCode());
+        frameLayout.addView(qrCodeView, LayoutHelper.createFrame(40, 48, Gravity.RIGHT | Gravity.CENTER_VERTICAL));
+
+        checkOptionsVisibility();
+
         addView(frameLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, containerPadding, 0, containerPadding, 0));
 
         LinearLayout linearLayout = new LinearLayout(context);
@@ -412,7 +422,9 @@ public class LinkActionView extends LinearLayout {
         frameLayout.setBackground(Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(8), Theme.getColor(Theme.key_graySection), ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_listSelector), (int) (255 * 0.3f))));
         linkView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         optionsView.setColorFilter(Theme.getColor(Theme.key_dialogTextGray3));
-        //optionsView.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), 1));
+        optionsView.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_dialogTextGray3)));
+        qrCodeView.setColorFilter(Theme.getColor(Theme.key_dialogTextGray3));
+        qrCodeView.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_dialogTextGray3)));
         avatarsContainer.countTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText));
         avatarsContainer.setBackground(Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(6), 0, ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText), (int) (255 * 0.3f))));
 
@@ -453,17 +465,15 @@ public class LinkActionView extends LinearLayout {
     }
 
     public void hideRevokeOption(boolean b) {
-        if (hideRevokeOption != b) {
-            hideRevokeOption = b;
-            optionsView.setVisibility(View.VISIBLE);
-            optionsView.setImageDrawable(ContextCompat.getDrawable(optionsView.getContext(), R.drawable.ic_ab_other));
-        }
+        hideRevokeOption = b;
+        checkOptionsVisibility();
     }
 
     public void hideOptions() {
         optionsView.setVisibility(View.GONE);
         linkView.setGravity(Gravity.CENTER);
         removeView.setVisibility(View.GONE);
+        qrCodeView.setVisibility(View.GONE);
         avatarsContainer.setVisibility(View.GONE);
     }
 
@@ -519,6 +529,17 @@ public class LinkActionView extends LinearLayout {
             button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
         }
         builder.show();
+    }
+
+    // show QR code if only qr is available
+    private void checkOptionsVisibility() {
+        if (hideRevokeOption && (this.permanent || !canEdit)) {
+            qrCodeView.setVisibility(View.VISIBLE);
+            optionsView.setVisibility(View.GONE);
+        } else {
+            qrCodeView.setVisibility(View.GONE);
+            optionsView.setVisibility(View.VISIBLE);
+        }
     }
 
     public void setDelegate(Delegate delegate) {
@@ -612,9 +633,11 @@ public class LinkActionView extends LinearLayout {
 
     public void setPermanent(boolean permanent) {
         this.permanent = permanent;
+        checkOptionsVisibility();
     }
 
     public void setCanEdit(boolean canEdit) {
         this.canEdit = canEdit;
+        checkOptionsVisibility();
     }
 }
