@@ -75,6 +75,7 @@ import android.text.style.ClickableSpan;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.ImageSpan;
 import android.text.style.URLSpan;
+import android.util.Log;
 import android.util.Pair;
 import android.util.Property;
 import android.util.SparseArray;
@@ -35380,6 +35381,29 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 AndroidUtilities.setAdjustResizeToNothing(getParentActivity(), classGuid);
                 fragmentView.requestLayout();
             }
+        }
+
+        @Override
+        public boolean didLongPressSideButton(ChatMessageCell cell, int sideButton) {
+            if (getParentActivity() == null) {
+                return false;
+            }
+            if (chatActivityEnterView != null) {
+                chatActivityEnterView.closeKeyboard();
+            }
+
+            MessageObject messageObject = cell.getMessageObject();
+            if (chatMode == MODE_PINNED || chatMode == MODE_SAVED || (chatMode == MODE_SEARCH && searchType == SEARCH_PUBLIC_POSTS) || (UserObject.isReplyUser(currentUser) || UserObject.isUserSelf(currentUser)) && messageObject.messageOwner.fwd_from != null && messageObject.messageOwner.fwd_from.saved_from_peer != null) {
+                return false;
+            }
+
+            cell.hideSideButton();
+            cell.postDelayed(() -> {
+                cell.showSideButton(sideButton);
+            }, 2000);
+
+            Log.i("kirillNay", "Long press handled");
+            return true;
         }
 
         @Override
