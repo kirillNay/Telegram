@@ -4219,6 +4219,8 @@
     <string name="VoipMyMicrophoneState">Your microphone is turned off</string>
     <string name="NoRtmpStreamFromAppOwner">**Oops!** Telegram doesn\'t see any stream coming from your streaming app.\n\nPlease make sure you entered the right Server URL and Stream Key in your app.</string>
     <string name="NoRtmpStreamFromAppViewer">%1$s is currently not broadcasting live stream data to Telegram.</string>
+    <string name="VoipNotify">Notify Me</string>
+    <string name="VoipNotifyMessage">You will be notified when the live stream starts.</string>
     <!--invite links-->
     <string name="ManageInviteLinks">Manage Invite Links</string>
     <string name="ManageLinksInfoHelp">You can create additional invite links that have a limited time or number of uses.</string>

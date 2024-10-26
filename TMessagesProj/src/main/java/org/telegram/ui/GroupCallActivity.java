@@ -1,6 +1,7 @@
 package org.telegram.ui;
 
 import static android.content.Context.AUDIO_SERVICE;
+import static org.telegram.messenger.NotificationCenter.groupCallNotifyUpdated;
 
 import android.Manifest;
 import android.animation.Animator;
@@ -4275,6 +4276,7 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
                     accountInstance.getConnectionsManager().sendRequest(req, (response, error) -> {
                         if (response != null) {
                             accountInstance.getMessagesController().processUpdates((TLRPC.Updates) response, false);
+                            accountInstance.getNotificationCenter().postNotificationNameOnUIThread(groupCallNotifyUpdated);
                         }
                     });
                     updateMuteButton(call.call.schedule_start_subscribed ? MUTE_BUTTON_STATE_CANCEL_REMINDER : MUTE_BUTTON_STATE_SET_REMINDER, true);
