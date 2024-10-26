@@ -62,6 +62,7 @@ import android.text.style.CharacterStyle;
 import android.text.style.ClickableSpan;
 import android.text.style.LeadingMarginSpan;
 import android.text.style.URLSpan;
+import android.util.Log;
 import android.util.Pair;
 import android.util.Property;
 import android.util.SparseArray;
@@ -558,9 +559,11 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         default void didPressSideButton(ChatMessageCell cell) {
         }
 
-        default boolean didLongPressSideButton(ChatMessageCell cell, int sideButton) {
+        default boolean didLongPressSideButton(ChatMessageCell cell, int sideButton, float sideStartX, float sideStartY) {
             return false;
         }
+
+        default void didCancelPressSideButton(ChatMessageCell cell) {}
 
         default void didPressOther(ChatMessageCell cell, float otherX, float otherY) {
         }
@@ -1377,7 +1380,6 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     private int drawSideButton;
     private boolean sideButtonVisible;
     private boolean shouldDrawSideButton = true;
-    private boolean invalidateSideButton = false;
     private int drawSideButton2;
     private boolean sideButtonPressed;
     private int pressedSideButton;
@@ -4338,11 +4340,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                                 delegate.didPressCommentButton(this);
                             } else {
                                 delegate.didPressSideButton(this);
+                                delegate.didCancelPressSideButton(this);
                             }
                         }
-                        sideButtonPressed = false;
-                        pressedSideButton = 0;
-                    } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {
                         sideButtonPressed = false;
                         pressedSideButton = 0;
                     } else if (event.getAction() == MotionEvent.ACTION_MOVE) {
@@ -10086,11 +10086,11 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             }
 
             if (!handled && sideButtonPressed && pressedSideButton != SIDE_BUTTON_SPONSORED_CLOSE && pressedSideButton != SIDE_BUTTON_SPONSORED_MORE) {
-                handled = delegate.didLongPressSideButton(this, pressedSideButton);
+                handled = delegate.didLongPressSideButton(this, pressedSideButton, sideStartX, sideStartY);
             }
 
-            sideButtonPressed = false;
-            pressedSideButton = 0;
+//            sideButtonPressed = false;
+//            pressedSideButton = 0;
 
             if (!handled) {
                 delegate.didLongPress(this, lastTouchX, lastTouchY);
@@ -17404,8 +17404,6 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
         if (delegate == null || delegate.canDrawOutboundsContent() || transitionParams.messageEntering || getAlpha() != 1f) {
             drawOutboundsContent(canvas);
-        } else if (invalidateSideButton) {
-            drawSideButton(canvas);
         }
 
         if (restore != Integer.MIN_VALUE) {
@@ -18111,7 +18109,6 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             drawBotButtons(canvas, botButtons, transitionParams.animateBotButtonsChanged ? (int) (0xFF * transitionParams.animateChangeProgress) : 0xFF);
         }
 
-        invalidateSideButton = false;
         drawSideButton(canvas);
     }
 
@@ -18279,22 +18276,14 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     }
 
     public void hideSideButton() {
-        invalidateSideButton = true;
-        drawSideButton = 0;
-        invalidate();
+        shouldDrawSideButton = false;
     }
 
-    public void showSideButton(int sideButton) {
-        drawSideButton = sideButton;
-        invalidateSideButton = true;
-        invalidate();
+    public void showSideButton() {
+        shouldDrawSideButton = true;
     }
 
     private void drawSideButton(Canvas canvas) {
-        if (!shouldDrawSideButton) {
-            return;
-        }
-
         if (drawSideButton != 0) {
             if (currentPosition != null && currentMessagesGroup != null && currentMessagesGroup.isDocuments && !currentPosition.last) {
                 return;
@@ -18348,6 +18337,11 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 sideStartX -= offsetX;
                 sideStartY -= offsetY;
             }
+
+            if (!shouldDrawSideButton) {
+                return;
+            }
+
             sideButtonVisible = true;
             if (drawSideButton == 3) {
                 if (!(enterTransitionInProgress && !currentMessageObject.isVoice())) {

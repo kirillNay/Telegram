@@ -197,6 +197,7 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.EmojiThemes;
 import org.telegram.ui.ActionBar.INavigationLayout;
+import org.telegram.ui.ActionBar.QuickShareLayout;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
@@ -1011,6 +1012,10 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     private boolean switchFromTopics;
     private boolean switchingFromTopics;
     private float switchingFromTopicsProgress;
+
+    private QuickShareLayout quickShareLayout;
+    private boolean isQuickShareShown = false;
+    private final RectF quickShareRect = new RectF();
 
     private final static int OPTION_RETRY = 0;
     private final static int OPTION_DELETE = 1;
@@ -3285,6 +3290,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         voiceHintTextView = null;
         blurredView = null;
         dummyMessageCell = null;
+        quickShareLayout = null;
         cantDeleteMessagesCount = 0;
         canEditMessagesCount = 0;
         cantForwardMessagesCount = 0;
@@ -4066,6 +4072,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             mentionContainer.getAdapter().onDestroy();
         }
 
+        // Создаем QuickShare, но нужно подумать, когда нам это не нужно. Например, в Preview
+        quickShareLayout = new QuickShareLayout(context);
+
         chatListView = new RecyclerListViewInternal(context, themeDelegate) {
             private int lastWidth;
 
@@ -4226,7 +4235,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 if (isFastScrollAnimationRunning()) {
                     return false;
                 }
-                boolean result = super.onInterceptTouchEvent(e);
+                boolean result = isQuickShareShown ? true : super.onInterceptTouchEvent(e);
                 if (actionBar.isActionModeShowed() || reportType >= 0) {
                     return result;
                 }
@@ -4510,10 +4519,22 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                     startedTrackingSlidingView = false;
                     chatLayoutManager.setCanScrollVertically(true);
                 }
+
+                if (isQuickShareShown) {
+                    if (e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_CANCEL) {
+
+                        // TODO обработать выбор контакта
+                        if (quickShareLayout != null) {
+
+                            quickShareLayout.hide();
+                        }
+                    }
+                }
             }
 
             @Override
             public boolean onTouchEvent(MotionEvent e) {
+                // Нужно отменить скрол + при отпускании пальца отменять shareWindow
                 textSelectionHelper.checkSelectionCancel(e);
                 if (e.getAction() == MotionEvent.ACTION_DOWN) {
                     scrollByTouch = true;
@@ -4579,6 +4600,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                         }
                     }
                 }
+
                 if (isFastScrollAnimationRunning()) {
                     return false;
                 }
@@ -35384,7 +35406,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         }
 
         @Override
-        public boolean didLongPressSideButton(ChatMessageCell cell, int sideButton) {
+        public boolean didLongPressSideButton(ChatMessageCell cell, int sideButton, float sideStartX, float sideStartY) {
             if (getParentActivity() == null) {
                 return false;
             }
@@ -35397,12 +35419,39 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 return false;
             }
 
+            // Обрабатываем длительное нажатие на sideButton. Поднимаем запускаем анимацию + поднимаем попап
             cell.hideSideButton();
-            cell.postDelayed(() -> {
-                cell.showSideButton(sideButton);
-            }, 2000);
 
-            Log.i("kirillNay", "Long press handled");
+            int[] loc = new int[2];
+            cell.getLocationInWindow(loc);
+
+            int[] locParent = new int[2];
+            chatListView.getLocationInWindow(locParent);
+
+            float actualX = loc[0] + sideStartX;
+            float actualY = (int) loc[1] + sideStartY - dp(16) - dp(64);
+
+            if (quickShareLayout != null) {
+                quickShareLayout.setX(actualX);
+                quickShareLayout.setY(actualY);
+
+                contentView.addView(quickShareLayout);
+
+                quickShareLayout.onHide(() -> {
+                    chatListView.suppressLayout(false);
+                    cell.showSideButton();
+                    isQuickShareShown = false;
+                    swipeBackEnabled = true;
+                    contentView.removeView(quickShareLayout);
+                });
+
+                chatListView.suppressLayout(true);
+                swipeBackEnabled = false;
+
+                quickShareLayout.show();
+                isQuickShareShown = true;
+            }
+
             return true;
         }
 
