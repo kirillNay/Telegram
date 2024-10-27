@@ -4073,7 +4073,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         }
 
         // Создаем QuickShare, но нужно подумать, когда нам это не нужно. Например, в Preview
-        quickShareLayout = new QuickShareLayout(context);
+        quickShareLayout = new QuickShareLayout(context, resourceProvider);
 
         chatListView = new RecyclerListViewInternal(context, themeDelegate) {
             private int lastWidth;
@@ -35422,20 +35422,36 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             // Обрабатываем длительное нажатие на sideButton. Поднимаем запускаем анимацию + поднимаем попап
             cell.hideSideButton();
 
-            int[] loc = new int[2];
-            cell.getLocationInWindow(loc);
-
-            int[] locParent = new int[2];
-            chatListView.getLocationInWindow(locParent);
-
-            float actualX = loc[0] + sideStartX;
-            float actualY = (int) loc[1] + sideStartY - dp(16) - dp(64);
-
             if (quickShareLayout != null) {
-                quickShareLayout.setX(actualX);
-                quickShareLayout.setY(actualY);
-
                 contentView.addView(quickShareLayout);
+
+                int maxHeight = dp(120);
+                int maxWidth = dp(280);
+
+                int[] cellLoc = new int[2];
+                cell.getLocationInWindow(cellLoc);
+
+                int[] locParent = new int[2];
+                contentView.getLocationInWindow(locParent);
+
+                float buttonCenterX = cellLoc[0] - locParent[0] + sideStartX + dp(16);
+                float buttonCenterY = cellLoc[1] - locParent[1] + sideStartY + dp(16);
+
+                float preferableEndX = Math.min(buttonCenterX + dp(16) + dp(84) + dp(16), contentView.getWidth() - dp(16));
+                float startX = Math.max(dp(16), preferableEndX - maxWidth);
+
+                float startY;
+                int direction;
+                if (buttonCenterY + dp(16) - maxHeight >= actionBar.getHeight()) {
+                    direction = QuickShareLayout.UP;
+                    startY = buttonCenterY + dp(16) - maxHeight;
+                } else {
+                    direction = QuickShareLayout.DOWN;
+                    startY = buttonCenterY - dp(16);
+                }
+
+                quickShareLayout.setX(startX);
+                quickShareLayout.setY(startY);
 
                 quickShareLayout.onHide(() -> {
                     chatListView.suppressLayout(false);
@@ -35448,7 +35464,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 chatListView.suppressLayout(true);
                 swipeBackEnabled = false;
 
-                quickShareLayout.show();
+                quickShareLayout.show((int) (buttonCenterX - startX), direction);
                 isQuickShareShown = true;
             }
 

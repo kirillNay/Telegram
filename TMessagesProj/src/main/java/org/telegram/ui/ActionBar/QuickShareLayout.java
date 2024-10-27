@@ -1,26 +1,37 @@
 package org.telegram.ui.ActionBar;
 
 import android.content.Context;
+import android.content.res.Resources;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.PixelFormat;
+import android.graphics.RectF;
+import android.graphics.drawable.Drawable;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
-import android.opengl.Matrix;
 import android.util.Log;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.R;
 import org.telegram.ui.Components.LayoutHelper;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
-import static android.opengl.GLES10.glClearColor;
 import static android.opengl.GLES10.glViewport;
 import static android.opengl.GLES20.GL_BLEND;
 import static android.opengl.GLES20.GL_COLOR_BUFFER_BIT;
@@ -45,11 +56,9 @@ import static android.opengl.GLES20.glGetShaderiv;
 import static android.opengl.GLES20.glGetUniformLocation;
 import static android.opengl.GLES20.glLinkProgram;
 import static android.opengl.GLES20.glShaderSource;
-import static android.opengl.GLES20.glUniform1f;
-import static android.opengl.GLES20.glUniform2f;
-import static android.opengl.GLES20.glUniform4f;
 import static android.opengl.GLES20.glUseProgram;
 import static org.telegram.messenger.AndroidUtilities.dp;
+import static org.telegram.ui.ActionBar.Theme.hasGradientService;
 
 public class QuickShareLayout extends FrameLayout {
 
@@ -57,40 +66,83 @@ public class QuickShareLayout extends FrameLayout {
 
     private Runnable onHide;
 
-    public QuickShareLayout(@NonNull Context context) {
-        super(context);
+    private final RectF shareButtonRect = new RectF(0F, 0F, 32F, 32F);
 
-        setLayoutParams(new ViewGroup.LayoutParams(dp(64), dp(64)));
+    private final Theme.ResourcesProvider resourcesProvider;
+
+    private @Direction int direction;
+
+    @IntDef({UP, DOWN})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface Direction {}
+    public static final int UP = 0;
+    public static final int DOWN = 1;
+
+    public QuickShareLayout(@NonNull Context context, Theme.ResourcesProvider resourcesProvider) {
+        super(context);
+        this.resourcesProvider = resourcesProvider;
+
+        setLayoutParams(new ViewGroup.LayoutParams(dp(280), dp(120)));
         setBackgroundColor(Color.argb(20, 255, 0, 0));
         setVisibility(View.GONE);
 
         balloonView = new GLSurfaceView(context);
         balloonView.setLayoutParams(new LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        balloonView.setBackgroundColor(Color.argb(0, 0, 0, 0));
         balloonView.setEGLContextClientVersion(2);
         balloonView.setZOrderOnTop(true);
+        balloonView.getHolder().setFormat(PixelFormat.TRANSPARENT);
         balloonView.setEGLConfigChooser(8, 8, 8, 8, 16, 0);
-        balloonView.getHolder().setFormat(PixelFormat.RGBA_8888);
-        balloonView.setRenderer(new QuickShareLayout.ShareBalloonRenderer());
-        balloonView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+        balloonView.setRenderer(new QuickShareLayout.ShareBalloonRenderer(getContext()));
+        //balloonView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
 
         addView(balloonView);
     }
 
     @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        Log.i("kirillNay", "QuickSharePopupWindow.onTouchEvent: " + event.getX() + "; " + event.getY());
-        return super.onTouchEvent(event);
+    protected void onDraw(@NonNull Canvas canvas) {
+        super.onDraw(canvas);
+
+        drawButton(canvas, shareButtonRect);
+    }
+
+    // Сюда просто передаю rect, где будет находится button в текущем canvas'е
+    private void drawButton(Canvas canvas, RectF rect) {
+        canvas.drawRoundRect(rect, AndroidUtilities.dp(16), AndroidUtilities.dp(16), getThemedPaint(Theme.key_paint_chatActionBackground));
+
+        if (hasGradientService()) {
+            canvas.drawRoundRect(rect, AndroidUtilities.dp(16), AndroidUtilities.dp(16), Theme.chat_actionBackgroundGradientDarkenPaint);
+        }
+
+        final int scx = ((int) rect.left + AndroidUtilities.dp(16)), scy = ((int) rect.top + AndroidUtilities.dp(16));
+        Drawable drawable = Theme.getThemeDrawable(Theme.key_drawable_shareIcon);
+        final int shw = drawable.getIntrinsicWidth() / 2, shh = drawable.getIntrinsicHeight() / 2;
+        drawable.setBounds(scx - shw, scy - shh, scx + shw, scy + shh);
+        drawable.draw(canvas);
+    }
+
+    private Paint getThemedPaint(String paintKey) {
+        Paint paint = resourcesProvider != null ? resourcesProvider.getPaint(paintKey) : null;
+        return paint != null ? paint : Theme.getThemePaint(paintKey);
     }
 
     public void onHide(Runnable onHide) {
         this.onHide = onHide;
     }
 
-    public void show() {
+    private int shareButtonCenterX;
+
+    public void show(int shareButtonCenterX, @Direction int direction) {
+        this.direction = direction;
+        if (direction == UP) {
+            shareButtonRect.set(shareButtonCenterX - dp(16), getHeight() - dp(32), shareButtonCenterX + dp(16), getHeight());
+        } else {
+            shareButtonRect.set(shareButtonCenterX - dp(16), 0, shareButtonCenterX + dp(16), dp(32));
+        }
+        this.shareButtonCenterX = shareButtonCenterX;
+
         setVisibility(View.VISIBLE);
     }
-
-
 
     public void hide() {
         setVisibility(View.GONE);
@@ -99,83 +151,52 @@ public class QuickShareLayout extends FrameLayout {
         }
     }
 
-    private static class ShareBalloonRenderer implements GLSurfaceView.Renderer {
-
-        private final static String VERTEX_SHADER = "#version 300 es\n"
-                + "precision mediump float;\n"
-                + "\n"
-                + "in vec4 aPosition;\n"
-                + "out vec2 vTexCoord;\n"
-                + "\n"
-                + "void main() {\n"
-                + "    vTexCoord = aPosition.xy * 0.5 + 0.5;\n"
-                + "    gl_Position = aPosition;\n"
-                + "}\n";
-
-        private final static String FRAGMENT_SHADER = "#version 300 es\n"
-                + "precision mediump float;\n"
-                + "\n"
-                + "in vec2 vTexCoord;   // Входные координаты текстуры (от 0.0 до 1.0)\n"
-                + "out vec4 fragColor;  // Выходной цвет фрагмента\n"
-                + "\n"
-                + "uniform vec2 resolution;   // Размер экрана или текстуры\n"
-                + "uniform vec4 rectColor;    // Цвет прямоугольника (RGBA)\n"
-                + "uniform float radius;      // Радиус закругления\n"
-                + "\n"
-                + "void main() {\n"
-                + "    // Преобразуем координаты в диапазон от 0 до размера экрана или прямоугольника\n"
-                + "    vec2 uv = vTexCoord * resolution;\n"
-                + "\n"
-                + "    // Определяем размеры прямоугольника\n"
-                + "    vec2 rectSize = resolution * 0.5; // Используем половину размера экрана для прямоугольника\n"
-                + "    vec2 center = resolution * 0.5;   // Центр прямоугольника\n"
-                + "\n"
-                + "    // Вычисляем расстояние до ближайшего угла прямоугольника\n"
-                + "    vec2 dist = abs(uv - center) - rectSize + vec2(radius);\n"
-                + "\n"
-                + "    // Если расстояние по обеим осям меньше нуля, значит пиксель находится внутри прямоугольника\n"
-                + "    float outside = length(max(dist, 0.0)) - radius;\n"
-                + "\n"
-                + "    // Устанавливаем цвет пикселя, если он внутри закругленного прямоугольника, иначе делаем его прозрачным\n"
-                + "    if (outside < 0.0) {\n"
-                + "        fragColor = rectColor;\n"
-                + "    } else {\n"
-                + "        discard; // Пропускаем пиксели, которые выходят за границы\n"
-                + "    }\n"
-                + "}\n";
+    private class ShareBalloonRenderer implements GLSurfaceView.Renderer {
 
         private int program;
 
         private int uResolutionLocation;
-        private int uRectColorLocation;
-        private int uRadiusLocation;
+        private int uTimeLocation;
+        private int uShareButtonInitCordLocation;
+        private int uShareButtonCurrentCordLocation;
+        private int uShareButtonRadiusLocation;
 
         private int screenWidth;
         private int screenHeight;
 
-        private final float[] mvpMatrix = new float[16];
-        private final float[] scaleMatrix = new float[16];
+        private final Context context;
 
-        private float scaleFactor = 1.0f;
-        private final float maxScaleFactor = 1.5f;
-        private final float scaleSpeed = 0.01f;
-        private boolean isScalingUp = true;
+        ShareBalloonRenderer(Context context){
+            super();
+            this.context = context;
+        }
 
         @Override
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            int vertexShaderId = createShader(GL_VERTEX_SHADER, VERTEX_SHADER);
-            int fragmentShaderId = createShader(GL_FRAGMENT_SHADER, FRAGMENT_SHADER);
+            count = 0;
+
+            int vertexShaderId = createShader(GL_VERTEX_SHADER, R.raw.aa);
+            int fragmentShaderId = createShader(GL_FRAGMENT_SHADER, R.raw.aaa);
             program = createProgram(vertexShaderId, fragmentShaderId);
 
-            //uMVPMatrixLocation = glGetUniformLocation(program, "uMVPMatrix");
-            uResolutionLocation = glGetUniformLocation(program, "resolution");
-            uRectColorLocation = glGetUniformLocation(program, "rectColor");
-            uRadiusLocation = glGetUniformLocation(program, "radius");
+            uResolutionLocation = glGetUniformLocation(program, "u_Resolution");
+            uTimeLocation = glGetUniformLocation(program, "u_Time");
+            uShareButtonInitCordLocation = glGetUniformLocation(program, "u_ShareButtonInitCord");
+            uShareButtonCurrentCordLocation = glGetUniformLocation(program, "u_ShareButtonCurrentCord");
+            uShareButtonRadiusLocation = glGetUniformLocation(program, "u_ShareButtonRadius");
+        }
 
-            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        private int count = 0;
+
+        private void setUniforms() {
+            GLES20.glUniform3f(uResolutionLocation, (float) screenWidth, (float) screenHeight, 1.0f);
+            GLES20.glUniform1f(uTimeLocation, (count++) / 100F);
+            GLES20.glUniform2f(uShareButtonInitCordLocation, shareButtonRect.left + shareButtonRect.width() / 2F, shareButtonRect.top + shareButtonRect.height() / 2f);
+            GLES20.glUniform2f(uShareButtonCurrentCordLocation, shareButtonRect.left + shareButtonRect.width() / 2F, shareButtonRect.top + shareButtonRect.height() / 2f);
+            GLES20.glUniform1f(uShareButtonRadiusLocation, (float) dp(32));
         }
 
         @Override
@@ -184,39 +205,14 @@ public class QuickShareLayout extends FrameLayout {
 
             screenWidth = width;
             screenHeight = height;
-
-            // Устанавливаем начальную матрицу проекции
-            Matrix.setIdentityM(mvpMatrix, 0);
         }
 
         @Override
         public void onDrawFrame(GL10 gl) {
             glClear(GL_COLOR_BUFFER_BIT);
 
-            // Обновляем scaleFactor для анимации надувания/сдувания
-            if (isScalingUp) {
-                scaleFactor += scaleSpeed;
-                if (scaleFactor >= maxScaleFactor) {
-                    isScalingUp = false;
-                }
-            } else {
-                scaleFactor -= scaleSpeed;
-                if (scaleFactor <= 1.0f) {
-                    isScalingUp = true;
-                }
-            }
-
-            // Обновляем матрицу масштабирования
-            Matrix.setIdentityM(scaleMatrix, 0);
-            Matrix.scaleM(scaleMatrix, 0, scaleFactor, scaleFactor, 1.0f);
-            Matrix.multiplyMM(mvpMatrix, 0, scaleMatrix, 0, mvpMatrix, 0);
-
             glUseProgram(program);
-
-            //glUniformMatrix4fv(uMVPMatrixLocation, 1, false, mvpMatrix, 0);
-            glUniform2f(uResolutionLocation, (float) screenWidth, (float) screenHeight);
-            glUniform4f(uRectColorLocation, 1.0f, 0.0f, 0.0f, 0.0f); // Красный цвет
-            glUniform1f(uRadiusLocation, 40.0f);
+            setUniforms();
 
             drawRectangle();
 
@@ -225,38 +221,56 @@ public class QuickShareLayout extends FrameLayout {
 
         private void drawRectangle() {
             float[] vertices = {
-                    -1.0f, -1.0f, 0.0f,
-                    1.0f, -1.0f, 0.0f,
-                    -1.0f,  1.0f, 0.0f,
-                    1.0f,  1.0f, 0.0f
+                    -1f, -1f, // нижний левый
+                    1f, -1f, // нижний правый
+                    -1f,  1f, // верхний левый
+                    1f,  1f  // верхний правый
             };
 
-            // Загрузка координат вершин в буфер
             FloatBuffer vertexBuffer = ByteBuffer.allocateDirect(vertices.length * 4)
                     .order(ByteOrder.nativeOrder())
                     .asFloatBuffer()
                     .put(vertices);
             vertexBuffer.position(0);
 
-            // Создание буфера вершин и привязка его в OpenGL
-            int[] vertexBufferId = new int[1];
-            GLES20.glGenBuffers(1, vertexBufferId, 0);
-            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexBufferId[0]);
-            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, vertices.length * 4, vertexBuffer, GLES20.GL_STATIC_DRAW);
+            int positionLocation = GLES20.glGetAttribLocation(program, "vPosition");
+            GLES20.glEnableVertexAttribArray(positionLocation);
+            GLES20.glVertexAttribPointer(positionLocation, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer);
 
-            // Получаем атрибут позиции в шейдере и включаем его
-            int aPositionLocation = GLES20.glGetAttribLocation(program, "aPosition");
-            GLES20.glEnableVertexAttribArray(aPositionLocation);
-            GLES20.glVertexAttribPointer(aPositionLocation, 3, GLES20.GL_FLOAT, false, 3 * 4, 0);
-
-            // Рисуем треугольники (создающие прямоугольник)
-            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, vertices.length / 3);
-
-            // Отключаем атрибут позиции
-            GLES20.glDisableVertexAttribArray(aPositionLocation);
+            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+            GLES20.glDisableVertexAttribArray(positionLocation);
 
             // Отвязываем буфер вершин
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+        }
+
+        // TODO не забудь удалить, будем заранее иметь String
+        private int createShader(int type, int shaderRawId) {
+            String shaderText = readTextFromRaw(shaderRawId);
+            return createShader(type, shaderText);
+        }
+
+        private String readTextFromRaw(int resourceId) {
+            StringBuilder stringBuilder = new StringBuilder();
+            try {
+                BufferedReader bufferedReader = null;
+                try {
+                    InputStream inputStream = context.getResources().openRawResource(resourceId);
+                    bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+                    String line;
+                    while ((line = bufferedReader.readLine()) != null) {
+                        stringBuilder.append(line);
+                        stringBuilder.append("\r\n");
+                    }
+                } finally {
+                    if (bufferedReader != null) {
+                        bufferedReader.close();
+                    }
+                }
+            } catch (IOException | Resources.NotFoundException ex) {
+                ex.printStackTrace();
+            }
+            return stringBuilder.toString();
         }
 
         private int createShader(int type, String shaderText) {
