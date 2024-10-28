@@ -75,7 +75,6 @@ import android.text.style.ClickableSpan;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.ImageSpan;
 import android.text.style.URLSpan;
-import android.util.Log;
 import android.util.Pair;
 import android.util.Property;
 import android.util.SparseArray;
@@ -1014,8 +1013,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     private float switchingFromTopicsProgress;
 
     private QuickShareLayout quickShareLayout;
-    private boolean isQuickShareShown = false;
-    private final RectF quickShareRect = new RectF();
+    private boolean isQuickShareShown;
 
     private final static int OPTION_RETRY = 0;
     private final static int OPTION_DELETE = 1;
@@ -4522,19 +4520,14 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
 
                 if (isQuickShareShown) {
                     if (e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_CANCEL) {
-
-                        // TODO обработать выбор контакта
-                        if (quickShareLayout != null) {
-
-                            quickShareLayout.hide();
-                        }
+                        QuickShareLayout.detach(quickShareLayout);
+                        quickShareLayout = null;
                     }
                 }
             }
 
             @Override
             public boolean onTouchEvent(MotionEvent e) {
-                // Нужно отменить скрол + при отпускании пальца отменять shareWindow
                 textSelectionHelper.checkSelectionCancel(e);
                 if (e.getAction() == MotionEvent.ACTION_DOWN) {
                     scrollByTouch = true;
@@ -35419,54 +35412,29 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 return false;
             }
 
-            // Обрабатываем длительное нажатие на sideButton. Поднимаем запускаем анимацию + поднимаем попап
             cell.hideSideButton();
 
-            if (quickShareLayout != null) {
-                contentView.addView(quickShareLayout);
+            int[] cellLoc = new int[2];
+            cell.getLocationInWindow(cellLoc);
 
-                int maxHeight = dp(120);
-                int maxWidth = dp(280);
+            int[] locParent = new int[2];
+            contentView.getLocationInWindow(locParent);
 
-                int[] cellLoc = new int[2];
-                cell.getLocationInWindow(cellLoc);
+            float buttonCenterX = cellLoc[0] - locParent[0] + sideStartX + dp(16);
+            float buttonCenterY = cellLoc[1] - locParent[1] + sideStartY + dp(16) - actionBar.getHeight();
 
-                int[] locParent = new int[2];
-                contentView.getLocationInWindow(locParent);
+            quickShareLayout = QuickShareLayout.showLayout(contentView, getResourceProvider(), (int) buttonCenterX, (int) buttonCenterY);
 
-                float buttonCenterX = cellLoc[0] - locParent[0] + sideStartX + dp(16);
-                float buttonCenterY = cellLoc[1] - locParent[1] + sideStartY + dp(16);
+            quickShareLayout.doOnDetach(() -> {
+                chatListView.suppressLayout(false);
+                cell.showSideButton();
+                swipeBackEnabled = true;
+                isQuickShareShown = false;
+            });
 
-                float preferableEndX = Math.min(buttonCenterX + dp(16) + dp(84) + dp(16), contentView.getWidth() - dp(16));
-                float startX = Math.max(dp(16), preferableEndX - maxWidth);
-
-                float startY;
-                int direction;
-                if (buttonCenterY + dp(16) - maxHeight >= actionBar.getHeight()) {
-                    direction = QuickShareLayout.UP;
-                    startY = buttonCenterY + dp(16) - maxHeight;
-                } else {
-                    direction = QuickShareLayout.DOWN;
-                    startY = buttonCenterY - dp(16);
-                }
-
-                quickShareLayout.setX(startX);
-                quickShareLayout.setY(startY);
-
-                quickShareLayout.onHide(() -> {
-                    chatListView.suppressLayout(false);
-                    cell.showSideButton();
-                    isQuickShareShown = false;
-                    swipeBackEnabled = true;
-                    contentView.removeView(quickShareLayout);
-                });
-
-                chatListView.suppressLayout(true);
-                swipeBackEnabled = false;
-
-                quickShareLayout.show((int) (buttonCenterX - startX), direction);
-                isQuickShareShown = true;
-            }
+            chatListView.suppressLayout(true);
+            swipeBackEnabled = false;
+            isQuickShareShown = true;
 
             return true;
         }

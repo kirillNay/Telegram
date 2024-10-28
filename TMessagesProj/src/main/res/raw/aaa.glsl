@@ -1,11 +1,17 @@
 precision mediump float;
 uniform vec3 u_Resolution;
-uniform float u_Time;
+uniform float u_Progress;
+uniform float u_ProgressF;
 
 // Initial button position
 uniform vec2 u_ShareButtonInitCord;
-uniform vec2 u_ShareButtonCurrentCord;
 uniform float u_ShareButtonRadius;
+
+uniform vec2 u_ShareButtonCurrentCord;
+
+// Quick share selector
+uniform vec2 u_SelectorFinalCenterCord;
+uniform vec2 u_SelectorFinalSize; // x - width; y - height
 
 float circleWithBlur(vec2 uv, vec2 position, float radius, float blur) {
     float dist = distance(position, uv);
@@ -17,7 +23,15 @@ float roundedRectangleWithBlur(vec2 uv, vec2 pos, vec2 size, float radius, float
     vec2 hSize = size / 2.0 - radius;
     float d = length(max(abs(uv - pos), hSize) - hSize);
     float r = smoothstep(-radius - blur, -radius + blur, -d);
-    return r * r * r * r * r;
+    return r;
+}
+
+vec2 normalizeVec2(vec2 coord) {
+    return 2.0 * (coord - 0.5 * u_Resolution.xy) / u_Resolution.y * vec2(1., -1.);
+}
+
+float interpolateLinear(float start, float end, float factor) {
+    return start + factor * (end - start);
 }
 
 float normalizeX(float x) {
@@ -28,45 +42,32 @@ float normalizeY(float y) {
     return 1.0 - 2.0 * y / u_Resolution.y;
 }
 
-vec2 normalizeVec2(vec2 coord) {
-    return 2.0 * (coord - 0.5 * u_Resolution.xy) / u_Resolution.y;
-}
-
 void main() {
     vec2 uv = 2.0 * (gl_FragCoord.xy - 0.5 * u_Resolution.xy) / u_Resolution.y; // normalized fragment coordinate
-    vec2 shareButtonInitCordNorm = 2.0 * (u_ShareButtonInitCord.xy - 0.5 * u_Resolution.xy) / u_Resolution.y * vec2(1., -1.); // normalized share button coordinate
-    vec2 shareButtonCurrentCordNorm = 2.0 * (u_ShareButtonCurrentCord.xy - 0.5 * u_Resolution.xy) / u_Resolution.y * vec2(1., -1.);
-    float shareButtonRadiousNorm = u_ShareButtonRadius / u_Resolution.y;
+    vec2 shareButtonInitCordNorm = normalizeVec2(u_ShareButtonInitCord.xy); // normalized share button coordinate
+    vec2 shareButtonCurrentCordNorm = normalizeVec2(u_ShareButtonCurrentCord.xy);
+    float shareButtonRadiusNorm = u_ShareButtonRadius * 2. / u_Resolution.y;
 
-    float pixelIntensity = 0.0;
-    float Time = u_Time / 5.0;
+    vec2 selectorFinalCordNorm = normalizeVec2(u_SelectorFinalCenterCord);
 
-    float maxHeight = 1.0;
-    float maxWidth = 1.0;
+    float aspectRatio = u_Resolution.y / u_Resolution.x;
+    // TODO come with better solution
+    vec2 selectorFinalSizeNorm = vec2(u_SelectorFinalSize.x / u_Resolution.x * 1.5, u_SelectorFinalSize.y / u_Resolution.y * 3.);
 
-    float maxY = 0.0;
-    float minX = 0.15;
+    vec2 rect = vec2(interpolateLinear(shareButtonInitCordNorm.x, selectorFinalCordNorm.x, u_Progress), interpolateLinear(shareButtonInitCordNorm.y, selectorFinalCordNorm.y, u_ProgressF));
+    float rectWidth = interpolateLinear(shareButtonRadiusNorm, selectorFinalSizeNorm.x, u_Progress) / 1.5;
+    float rectHeight = interpolateLinear(shareButtonRadiusNorm, selectorFinalSizeNorm.y, min(1.0, u_ProgressF * 2.)) / 1.5;
+    vec2 rectSize = vec2(rectWidth, rectHeight);
+    float rectRadius = rectHeight * .5;
 
-    vec2 rect = vec2(shareButtonInitCordNorm.x, shareButtonInitCordNorm.y + Time * 2.0);
-    vec2 rectSize = vec2(0.2 + Time * 3., 0.2 + Time);
-    float rectRadius = 0.15;
-    float rectBlur = 0.05;
+    float blur = interpolateLinear(0.1, 0., min(u_Progress, 1.));
+    float circleIntensity = circleWithBlur(uv, shareButtonCurrentCordNorm, shareButtonRadiusNorm, blur);
+    float rectIntecity = roundedRectangleWithBlur(uv, rect, rectSize, rectRadius, blur);
 
-    float circleIntensity = circleWithBlur(uv, shareButtonCurrentCordNorm, shareButtonRadiousNorm, 0.1);
-    float rectIntecity = roundedRectangleWithBlur(uv, rect, rectSize, rectRadius, 0.1);
-
-    pixelIntensity = smoothstep(0.99, 1.0, rectIntecity + circleIntensity);
+    float pixelIntensity = smoothstep(0.99, 1.0, rectIntecity + circleIntensity);
 
     if (pixelIntensity >= 0.99) {
-        if (rectIntecity > 0.) {
-            float dist = distance(uv, shareButtonCurrentCordNorm);
-            float alpha = smoothstep(shareButtonRadiousNorm - 0.1, shareButtonRadiousNorm * 1.5, dist);
-
-            gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
-        } else {
-            gl_FragColor = vec4(1.0, 1.0, 1.0, 0.0);
-        }
-
+        gl_FragColor = vec4(1.0, 1.0, 1.0, rectIntecity);
     } else {
         discard;
     }

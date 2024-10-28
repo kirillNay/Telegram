@@ -1,5 +1,7 @@
 package org.telegram.ui.ActionBar;
 
+import android.animation.AnimatorSet;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Canvas;
@@ -11,13 +13,13 @@ import android.graphics.drawable.Drawable;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.util.Log;
-import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
+import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 
 import javax.microedition.khronos.egl.EGLConfig;
@@ -57,56 +59,103 @@ import static android.opengl.GLES20.glGetUniformLocation;
 import static android.opengl.GLES20.glLinkProgram;
 import static android.opengl.GLES20.glShaderSource;
 import static android.opengl.GLES20.glUseProgram;
+import static org.telegram.messenger.AndroidUtilities.doOnLayout;
 import static org.telegram.messenger.AndroidUtilities.dp;
+import static org.telegram.messenger.AndroidUtilities.lerp;
 import static org.telegram.ui.ActionBar.Theme.hasGradientService;
 
 public class QuickShareLayout extends FrameLayout {
 
-    private final GLSurfaceView balloonView;
+    private final GLSurfaceView shareSelectorView;
 
-    private Runnable onHide;
+    private Runnable onDetach;
 
-    private final RectF shareButtonRect = new RectF(0F, 0F, 32F, 32F);
+    private final RectF initialButtonRect = new RectF();
+
+    private final RectF currentButtonRect = new RectF();
+
+    private final RectF finalShareSelectorRect = new RectF();
 
     private final Theme.ResourcesProvider resourcesProvider;
+
+    private final static int SELECTOR_WIDTH_PX = dp(276);
+
+    private final static int SELECTOR_HEIGHT_PX = dp(56);
+
+    private final static int SELECTOR_BUTTON_PADDING_PX = dp(16);
 
     private @Direction int direction;
 
     @IntDef({UP, DOWN})
     @Retention(RetentionPolicy.SOURCE)
-    public @interface Direction {}
+    public @interface Direction {
+    }
+
     public static final int UP = 0;
     public static final int DOWN = 1;
+
+    private final ValueAnimator animator = ValueAnimator.ofFloat(0F, 1F);
+    private final ValueAnimator animatorF = ValueAnimator.ofFloat(0F, 1F);
+    private final ValueAnimator buttonInAnimator = ValueAnimator.ofFloat(0F, 1F, 0F);
+
+    private final AnimatorSet animatorSet = new AnimatorSet();
 
     public QuickShareLayout(@NonNull Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.resourcesProvider = resourcesProvider;
 
-        setLayoutParams(new ViewGroup.LayoutParams(dp(280), dp(120)));
-        setBackgroundColor(Color.argb(20, 255, 0, 0));
-        setVisibility(View.GONE);
+        setLayoutParams(new ViewGroup.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        setBackgroundColor(Color.argb(0, 0, 0, 0));
 
-        balloonView = new GLSurfaceView(context);
-        balloonView.setLayoutParams(new LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
-        balloonView.setBackgroundColor(Color.argb(0, 0, 0, 0));
-        balloonView.setEGLContextClientVersion(2);
-        balloonView.setZOrderOnTop(true);
-        balloonView.getHolder().setFormat(PixelFormat.TRANSPARENT);
-        balloonView.setEGLConfigChooser(8, 8, 8, 8, 16, 0);
-        balloonView.setRenderer(new QuickShareLayout.ShareBalloonRenderer(getContext()));
-        //balloonView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+        animatorSet.playTogether(animator, animatorF, buttonInAnimator);
+        animatorSet.setDuration(1_000L);
 
-        addView(balloonView);
+        animator.setInterpolator(new CubicBezierInterpolator(.34, 1.2, .5, 1));
+        animatorF.setInterpolator(CubicBezierInterpolator.EASE_OUT_BACK);
+        buttonInAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_BACK);
+
+        animator.addUpdateListener((animation) -> invalidate());
+
+        shareSelectorView = new GLSurfaceView(context);
+        shareSelectorView.setLayoutParams(new LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        shareSelectorView.setEGLContextClientVersion(2);
+        shareSelectorView.setZOrderOnTop(true);
+        shareSelectorView.getHolder().setFormat(PixelFormat.TRANSPARENT);
+        shareSelectorView.setEGLConfigChooser(8, 8, 8, 8, 16, 0);
+        shareSelectorView.setRenderer(new QuickShareLayout.ShareBalloonRenderer(getContext()));
+        shareSelectorView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+
+        addView(shareSelectorView);
+    }
+
+    @Override
+    public void invalidate() {
+        shareSelectorView.requestRender();
+        super.invalidate();
     }
 
     @Override
     protected void onDraw(@NonNull Canvas canvas) {
         super.onDraw(canvas);
 
-        drawButton(canvas, shareButtonRect);
+        currentButtonRect.set(
+                initialButtonRect.left,
+                lerp(
+                        initialButtonRect.top,
+                        direction == UP ? initialButtonRect.top - dp(16) : initialButtonRect.top + dp(16),
+                        (float) buttonInAnimator.getAnimatedValue()
+                ),
+                initialButtonRect.right,
+                lerp(
+                        initialButtonRect.bottom,
+                        direction == UP ? initialButtonRect.bottom - dp(16) : initialButtonRect.bottom + dp(16),
+                        (float) buttonInAnimator.getAnimatedValue()
+                )
+        );
+
+        drawButton(canvas, currentButtonRect);
     }
 
-    // Сюда просто передаю rect, где будет находится button в текущем canvas'е
     private void drawButton(Canvas canvas, RectF rect) {
         canvas.drawRoundRect(rect, AndroidUtilities.dp(16), AndroidUtilities.dp(16), getThemedPaint(Theme.key_paint_chatActionBackground));
 
@@ -118,7 +167,19 @@ public class QuickShareLayout extends FrameLayout {
         Drawable drawable = Theme.getThemeDrawable(Theme.key_drawable_shareIcon);
         final int shw = drawable.getIntrinsicWidth() / 2, shh = drawable.getIntrinsicHeight() / 2;
         drawable.setBounds(scx - shw, scy - shh, scx + shw, scy + shh);
+
+        canvas.save();
+        canvas.rotate(
+                lerp(
+                        0F,
+                        direction == UP ? -60F : 60F,
+                        (float) buttonInAnimator.getAnimatedValue()
+                ),
+                rect.centerX(),
+                rect.centerY()
+        );
         drawable.draw(canvas);
+        canvas.restore();
     }
 
     private Paint getThemedPaint(String paintKey) {
@@ -126,29 +187,76 @@ public class QuickShareLayout extends FrameLayout {
         return paint != null ? paint : Theme.getThemePaint(paintKey);
     }
 
-    public void onHide(Runnable onHide) {
-        this.onHide = onHide;
+    public void doOnDetach(Runnable onDetach) {
+        this.onDetach = onDetach;
     }
 
-    private int shareButtonCenterX;
+    private void setupPositions(int shareButtonCenterX, int shareButtonCenterY) {
+        doOnLayout(this, () -> {
+            int rightX = Math.min(getWidth() - dp(12), shareButtonCenterX + SELECTOR_WIDTH_PX / 5);
+            int leftX = rightX - SELECTOR_WIDTH_PX;
+            if (leftX < dp(12)) {
+                leftX = dp(12);
+                rightX = leftX + SELECTOR_WIDTH_PX;
+            }
 
-    public void show(int shareButtonCenterX, @Direction int direction) {
-        this.direction = direction;
-        if (direction == UP) {
-            shareButtonRect.set(shareButtonCenterX - dp(16), getHeight() - dp(32), shareButtonCenterX + dp(16), getHeight());
-        } else {
-            shareButtonRect.set(shareButtonCenterX - dp(16), 0, shareButtonCenterX + dp(16), dp(32));
-        }
-        this.shareButtonCenterX = shareButtonCenterX;
+            int topY, preferableTopY;
+            topY = preferableTopY = shareButtonCenterY - dp(16) - SELECTOR_BUTTON_PADDING_PX - SELECTOR_HEIGHT_PX;
+            if (preferableTopY >= dp(12)) {
+                direction = UP;
+            } else {
+                direction = DOWN;
+                topY = shareButtonCenterY + dp(16) + SELECTOR_BUTTON_PADDING_PX;
+            }
+            int bottomY = topY + SELECTOR_HEIGHT_PX;
 
-        setVisibility(View.VISIBLE);
+            finalShareSelectorRect.set(leftX, topY, rightX, bottomY);
+            initialButtonRect.set(shareButtonCenterX - dp(16), shareButtonCenterY - dp(16), shareButtonCenterX + dp(16), shareButtonCenterY + dp(16));
+        });
     }
 
-    public void hide() {
-        setVisibility(View.GONE);
-        if (onHide != null) {
-            onHide.run();
+    private void start() {
+        animatorSet.start();
+    }
+
+    private void detach() {
+        ViewGroup parent = (ViewGroup) getParent();
+        if (parent != null) {
+            parent.removeView(this);
         }
+    }
+
+    public boolean isVisible() {
+        return getParent() != null;
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        animatorSet.cancel();
+
+        if (onDetach != null) {
+            onDetach.run();
+        }
+
+        super.onDetachedFromWindow();
+    }
+
+    public static QuickShareLayout showLayout(
+            @NonNull ViewGroup parent,
+            @NonNull Theme.ResourcesProvider resourcesProvider,
+            int shareButtonCenterX,
+            int shareButtonCenterY
+    ) {
+        QuickShareLayout layout = new QuickShareLayout(parent.getContext(), resourcesProvider);
+        parent.addView(layout);
+        layout.setupPositions(shareButtonCenterX, shareButtonCenterY);
+        layout.start();
+
+        return layout;
+    }
+
+    public static void detach(QuickShareLayout layout) {
+        layout.detach();
     }
 
     private class ShareBalloonRenderer implements GLSurfaceView.Renderer {
@@ -156,17 +264,21 @@ public class QuickShareLayout extends FrameLayout {
         private int program;
 
         private int uResolutionLocation;
-        private int uTimeLocation;
         private int uShareButtonInitCordLocation;
         private int uShareButtonCurrentCordLocation;
         private int uShareButtonRadiusLocation;
+        private int uSelectorFinalCenterCordLocation;
+        private int uSelectorFinalSizeLocation;
+
+        private int uProgressLocation;
+        private int uProgressFLocation;
 
         private int screenWidth;
         private int screenHeight;
 
         private final Context context;
 
-        ShareBalloonRenderer(Context context){
+        ShareBalloonRenderer(Context context) {
             super();
             this.context = context;
         }
@@ -176,27 +288,29 @@ public class QuickShareLayout extends FrameLayout {
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            count = 0;
-
             int vertexShaderId = createShader(GL_VERTEX_SHADER, R.raw.aa);
             int fragmentShaderId = createShader(GL_FRAGMENT_SHADER, R.raw.aaa);
             program = createProgram(vertexShaderId, fragmentShaderId);
 
             uResolutionLocation = glGetUniformLocation(program, "u_Resolution");
-            uTimeLocation = glGetUniformLocation(program, "u_Time");
+            uProgressLocation = glGetUniformLocation(program, "u_Progress");
             uShareButtonInitCordLocation = glGetUniformLocation(program, "u_ShareButtonInitCord");
             uShareButtonCurrentCordLocation = glGetUniformLocation(program, "u_ShareButtonCurrentCord");
             uShareButtonRadiusLocation = glGetUniformLocation(program, "u_ShareButtonRadius");
+            uSelectorFinalCenterCordLocation = glGetUniformLocation(program, "u_SelectorFinalCenterCord");
+            uSelectorFinalSizeLocation = glGetUniformLocation(program, "u_SelectorFinalSize");
+            uProgressFLocation = glGetUniformLocation(program, "u_ProgressF");
         }
-
-        private int count = 0;
 
         private void setUniforms() {
             GLES20.glUniform3f(uResolutionLocation, (float) screenWidth, (float) screenHeight, 1.0f);
-            GLES20.glUniform1f(uTimeLocation, (count++) / 100F);
-            GLES20.glUniform2f(uShareButtonInitCordLocation, shareButtonRect.left + shareButtonRect.width() / 2F, shareButtonRect.top + shareButtonRect.height() / 2f);
-            GLES20.glUniform2f(uShareButtonCurrentCordLocation, shareButtonRect.left + shareButtonRect.width() / 2F, shareButtonRect.top + shareButtonRect.height() / 2f);
-            GLES20.glUniform1f(uShareButtonRadiusLocation, (float) dp(32));
+            GLES20.glUniform2f(uShareButtonInitCordLocation, initialButtonRect.centerX(), initialButtonRect.centerY());
+            GLES20.glUniform2f(uShareButtonCurrentCordLocation, currentButtonRect.centerX(), currentButtonRect.centerY());
+            GLES20.glUniform1f(uShareButtonRadiusLocation, (float) dp(16));
+            GLES20.glUniform2f(uSelectorFinalCenterCordLocation, finalShareSelectorRect.centerX(), finalShareSelectorRect.centerY());
+            GLES20.glUniform2f(uSelectorFinalSizeLocation, (float) SELECTOR_WIDTH_PX, (float) SELECTOR_HEIGHT_PX);
+            GLES20.glUniform1f(uProgressLocation, (float) animator.getAnimatedValue());
+            GLES20.glUniform1f(uProgressFLocation, (float) animatorF.getAnimatedValue());
         }
 
         @Override
@@ -221,10 +335,10 @@ public class QuickShareLayout extends FrameLayout {
 
         private void drawRectangle() {
             float[] vertices = {
-                    -1f, -1f, // нижний левый
-                    1f, -1f, // нижний правый
-                    -1f,  1f, // верхний левый
-                    1f,  1f  // верхний правый
+                    -1f, -1f,
+                    1f, -1f,
+                    -1f, 1f,
+                    1f, 1f
             };
 
             FloatBuffer vertexBuffer = ByteBuffer.allocateDirect(vertices.length * 4)
@@ -240,7 +354,6 @@ public class QuickShareLayout extends FrameLayout {
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
             GLES20.glDisableVertexAttribArray(positionLocation);
 
-            // Отвязываем буфер вершин
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
         }
 
