@@ -704,7 +704,6 @@ public class QuickShareViewer {
                 final int[] compileStatus = new int[1];
                 glGetShaderiv(shaderId, GL_COMPILE_STATUS, compileStatus, 0);
                 if (compileStatus[0] == 0) {
-                    Log.e("kirillNay", "Shader compilation failure. Reason: " + glGetShaderInfoLog(shaderId));
                     glDeleteShader(shaderId);
                     FileLog.e("Shader compilation failure. Reason: " + glGetShaderInfoLog(shaderId));
                     return 0;
@@ -723,7 +722,6 @@ public class QuickShareViewer {
                 final int[] linkStatus = new int[1];
                 glGetProgramiv(programId, GL_LINK_STATUS, linkStatus, 0);
                 if (linkStatus[0] == 0) {
-                    Log.e("kirillNay", "Shader compilation failure. Reason: " + glGetShaderInfoLog(programId));
                     glDeleteProgram(programId);
                     FileLog.e("Shader compilation failure. Reason: " + glGetShaderInfoLog(programId));
                     return 0;
