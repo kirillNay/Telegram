@@ -196,7 +196,7 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.EmojiThemes;
 import org.telegram.ui.ActionBar.INavigationLayout;
-import org.telegram.ui.ActionBar.QuickShareLayout;
+import org.telegram.ui.ActionBar.QuickShareViewer;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
@@ -1012,7 +1012,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     private boolean switchingFromTopics;
     private float switchingFromTopicsProgress;
 
-    private QuickShareLayout quickShareLayout;
+    private QuickShareViewer quickShareViewer;
     private boolean isQuickShareShown;
 
     private final static int OPTION_RETRY = 0;
@@ -3288,7 +3288,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         voiceHintTextView = null;
         blurredView = null;
         dummyMessageCell = null;
-        quickShareLayout = null;
+        quickShareViewer = null;
         cantDeleteMessagesCount = 0;
         canEditMessagesCount = 0;
         cantForwardMessagesCount = 0;
@@ -4070,9 +4070,6 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             mentionContainer.getAdapter().onDestroy();
         }
 
-        // Создаем QuickShare, но нужно подумать, когда нам это не нужно. Например, в Preview
-        quickShareLayout = new QuickShareLayout(context, resourceProvider);
-
         chatListView = new RecyclerListViewInternal(context, themeDelegate) {
             private int lastWidth;
 
@@ -4518,10 +4515,13 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                     chatLayoutManager.setCanScrollVertically(true);
                 }
 
+                // TODO add contact selection
                 if (isQuickShareShown) {
                     if (e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_CANCEL) {
-                        QuickShareLayout.detach(quickShareLayout);
-                        quickShareLayout = null;
+                        if (quickShareViewer != null) {
+                            quickShareViewer.hide(false);
+                        }
+                        quickShareViewer = null;
                     }
                 }
             }
@@ -35417,17 +35417,15 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             int[] cellLoc = new int[2];
             cell.getLocationInWindow(cellLoc);
 
-            int[] locParent = new int[2];
-            contentView.getLocationInWindow(locParent);
+            float buttonCenterX = cellLoc[0] + sideStartX + dp(16);
+            float buttonCenterY = cellLoc[1] + sideStartY + dp(16) - actionBar.getHeight();
 
-            float buttonCenterX = cellLoc[0] - locParent[0] + sideStartX + dp(16);
-            float buttonCenterY = cellLoc[1] - locParent[1] + sideStartY + dp(16) - actionBar.getHeight();
+            quickShareViewer = new QuickShareViewer();
+            quickShareViewer.show(contentView, getResourceProvider(), (int) buttonCenterX, (int) buttonCenterY, actionBar.getHeight());
 
-            quickShareLayout = QuickShareLayout.showLayout(contentView, getResourceProvider(), (int) buttonCenterX, (int) buttonCenterY);
-
-            quickShareLayout.doOnDetach(() -> {
-                chatListView.suppressLayout(false);
+            quickShareViewer.doOnDetach(() -> {
                 cell.showSideButton();
+                chatListView.suppressLayout(false);
                 swipeBackEnabled = true;
                 isQuickShareShown = false;
             });
