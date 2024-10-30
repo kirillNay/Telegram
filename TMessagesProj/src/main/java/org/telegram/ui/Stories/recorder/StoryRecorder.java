@@ -107,7 +107,6 @@ import org.telegram.messenger.camera.CameraController;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
-import org.telegram.ui.ActionBar.ActionBarLayout;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.SimpleTextView;
@@ -2455,7 +2454,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
         muteHint = new HintView2(activity, HintView2.DIRECTION_TOP)
             .setJoint(1, -77 + 8 - 2)
             .setDuration(2000)
-            .setBounce(false)
+            .setBounceRepeatMode(HintView2.ONCE)
             .setAnimatedTextHacks(true, true, false);
         muteHint.setPadding(dp(8), 0, dp(8), 0);
         actionBarContainer.addView(muteHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP, 0, 52, 0, 0));

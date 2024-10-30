@@ -177,7 +177,6 @@ import org.telegram.ui.WrappedResourceProvider;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
-import java.net.IDN;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.util.ArrayList;
@@ -4588,7 +4587,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                 if (reactionsLongpressTooltip == null) {
                     reactionsLongpressTooltip = new HintView2(getContext(), HintView2.DIRECTION_BOTTOM).setJoint(1, -22);
                     reactionsLongpressTooltip.setBgColor(ColorUtils.setAlphaComponent(ColorUtils.blendARGB(Color.BLACK, Color.WHITE, 0.13f), 240));
-                    reactionsLongpressTooltip.setBounce(false);
+                    reactionsLongpressTooltip.setBounceRepeatMode(HintView2.NONE);
                     reactionsLongpressTooltip.setText(LocaleController.getString(R.string.ReactionLongTapHint));
                     reactionsLongpressTooltip.setPadding(AndroidUtilities.dp(8), 0, AndroidUtilities.dp(8), AndroidUtilities.dp(1));
                     storyContainer.addView(reactionsLongpressTooltip, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.RIGHT | Gravity.BOTTOM, 0, 0, 0, BIG_SCREEN ? 0 : 56));
