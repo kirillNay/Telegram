@@ -849,6 +849,10 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     protected float cornerRadius = 1.0f;
 
+    public float getCornerRadius() {
+        return cornerRadius;
+    }
+
     public ActionBar actionBar;
     private View actionBarShadow;
     private AnimatorSet actionBarAnimation;
@@ -3883,9 +3887,8 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 nextAttachLayout.setTranslationX(width);
                 if (currentAttachLayout instanceof ChatAttachAlertPhotoLayout) {
                     ChatAttachAlertPhotoLayout photoLayout = (ChatAttachAlertPhotoLayout) currentAttachLayout;
-                    if (photoLayout.cameraView != null) {
-                        photoLayout.cameraView.setVisibility(View.INVISIBLE);
-                        photoLayout.cameraIcon.setVisibility(View.INVISIBLE);
+                    if (photoLayout.mediaRecorder != null && photoLayout.mediaRecorder.getView() != null) {
+                        photoLayout.mediaRecorder.getView().setVisibility(View.INVISIBLE);
                         photoLayout.cameraCell.setVisibility(View.VISIBLE);
                     }
                 }
@@ -3893,9 +3896,8 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 currentAttachLayout.setTranslationX(-width);
                 if (nextAttachLayout == photoLayout) {
                     ChatAttachAlertPhotoLayout photoLayout = (ChatAttachAlertPhotoLayout) nextAttachLayout;
-                    if (photoLayout.cameraView != null) {
-                        photoLayout.cameraView.setVisibility(View.VISIBLE);
-                        photoLayout.cameraIcon.setVisibility(View.VISIBLE);
+                    if (photoLayout.mediaRecorder.getView() != null) {
+                        photoLayout.mediaRecorder.getView().setVisibility(View.VISIBLE);
                     }
                 }
             }
@@ -5117,18 +5119,11 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         return true;
     }
 
-    private boolean allowDrawContent = true;
     public boolean sent = false;
     @Override
     public void setAllowDrawContent(boolean value) {
         super.setAllowDrawContent(value);
         currentAttachLayout.onContainerTranslationUpdated(currentPanTranslationY);
-        if (allowDrawContent != value) {
-            allowDrawContent = value;
-            if (currentAttachLayout == photoLayout && photoLayout != null && !photoLayout.cameraExpanded) {
-                photoLayout.pauseCamera(!allowDrawContent || sent);
-            }
-        }
     }
 
     public void setStories(boolean value) {
