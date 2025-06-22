@@ -458,7 +458,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private FlagSecureReason flagSecure;
 
-    private HashMap<Integer, Integer> positionToOffset = new HashMap<>();
+    private final HashMap<Integer, Integer> positionToOffset = new HashMap<>();
 
     private float avatarX;
     private float avatarY;
@@ -472,7 +472,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private ValueAnimator expandAnimator;
     private float currentExpandAnimatorValue;
     private float currentExpanAnimatorFracture;
-    private float[] expandAnimatorValues = new float[]{0f, 1f};
+    private final float[] expandAnimatorValues = new float[]{0f, 1f};
     private boolean isInLandscapeMode;
     private boolean allowPullingDown;
     private boolean isPulledDown;
@@ -4741,13 +4741,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         topView.setBackgroundColorId(peerColor, false);
         topView.setBackgroundColor(getThemedColor(Theme.key_avatar_backgroundActionBarBlue));
         frameLayout.addView(topView);
-        //contentView.blurBehindViews.add(topView);
+        contentView.blurBehindViews.add(topView);
 
         animatedStatusView = new DrawerProfileCell.AnimatedStatusView(context, 20, 60);
         animatedStatusView.setPivotX(AndroidUtilities.dp(30));
         animatedStatusView.setPivotY(AndroidUtilities.dp(30));
 
         avatarContainer = new FrameLayout(context);
+        avatarContainer.setBackgroundColor(ContextCompat.getColor(context, android.R.color.holo_red_light));
         avatarContainer2 = new FrameLayout(context) {
 
             CanvasButton canvasButton;
@@ -4831,8 +4832,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         fallbackImage.setRoundRadius(AndroidUtilities.dp(11));
         AndroidUtilities.updateViewVisibilityAnimated(avatarContainer2, true, 1f, false);
         frameLayout.addView(avatarContainer2, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.START, 0, 0, 0, 0));
-        avatarContainer.setPivotX(0);
+
         avatarContainer.setPivotY(0);
+        avatarContainer.setPivotX(AndroidUtilities.dp(42) / 2f);
+
         avatarContainer2.addView(avatarContainer, LayoutHelper.createFrame(42, 42, Gravity.TOP | Gravity.LEFT, 64, 0, 0, 0));
         avatarImage = new AvatarImageView(context) {
             @Override
@@ -7093,13 +7096,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
             listView.setOverScrollMode(extraHeight > AndroidUtilities.dp(88f) && extraHeight < listView.getMeasuredWidth() - newTop ? View.OVER_SCROLL_NEVER : View.OVER_SCROLL_ALWAYS);
 
-            avatarX = -AndroidUtilities.dpf2(47f) * diff;
-            avatarY = (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + ActionBar.getCurrentActionBarHeight() / 2.0f * (1.0f + diff) - 21 * AndroidUtilities.density + 27 * AndroidUtilities.density * diff + actionBar.getTranslationY();
+            avatarX = (avatarContainer2.getMeasuredWidth() / 2f - avatarContainer.getMeasuredWidth() / 2f - AndroidUtilities.dp(64f)) * diff;
+            avatarY = (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + actionBar.getTranslationY() + AndroidUtilities.dp(8f);
 
             float h = openAnimationInProgress ? initialAnimationExtraHeight : extraHeight;
             if (h > AndroidUtilities.dp(88f) || isPulledDown) {
                 expandProgress = Math.max(0f, Math.min(1f, (h - AndroidUtilities.dp(88f)) / (listView.getMeasuredWidth() - newTop - AndroidUtilities.dp(88f))));
-                avatarScale = AndroidUtilities.lerp((42f + 18f) / 42f, (42f + 42f + 18f) / 42f, Math.min(1f, expandProgress * 3f));
+                avatarScale = AndroidUtilities.lerp((42f + 46f) / 42f, (42f + 42f + 18f) / 42f, Math.min(1f, expandProgress * 3f));
                 if (storyView != null) {
                     storyView.invalidate();
                 }
@@ -7264,7 +7267,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 nameTextView[1].setScaleX(1.67f);
                 nameTextView[1].setScaleY(1.67f);
 
-                avatarScale = AndroidUtilities.lerp(1.0f, (42f + 42f + 18f) / 42f, avatarAnimationProgress);
+                avatarScale = AndroidUtilities.lerp(1.0f, (42f + 42f + 46f) / 42f, avatarAnimationProgress);
                 if (storyView != null) {
                     storyView.setExpandProgress(1f);
                 }
@@ -7311,7 +7314,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
                 updateCollectibleHint();
             } else if (extraHeight <= AndroidUtilities.dp(88f)) {
-                avatarScale = (42 + 18 * diff) / 42.0f;
+                avatarScale = (42 + 46 * diff) / 42.0f;
                 if (storyView != null) {
                     storyView.invalidate();
                 }
@@ -9402,9 +9405,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     avatarImage.setImageDrawable(vectorAvatarThumbDrawable);
                 } else if (videoThumbLocation != null && !user.photo.personal) {
                     avatarImage.getImageReceiver().setVideoThumbIsSame(true);
-                    avatarImage.setImage(videoThumbLocation, "avatar", thumbLocation, "50_50", avatarDrawable, user);
+                    avatarImage.setImage(videoThumbLocation, "avatar", thumbLocation, "70_70", avatarDrawable, user);
                 } else {
-                    avatarImage.setImage(videoLocation, ImageLoader.AUTOPLAY_FILTER, thumbLocation, "50_50", avatarDrawable, user);
+                    avatarImage.setImage(videoLocation, ImageLoader.AUTOPLAY_FILTER, thumbLocation, "70_70", avatarDrawable, user);
                 }
             }
 
@@ -9955,7 +9958,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 filter = null;
             }
             if (avatarBig == null && !isTopic) {
-                avatarImage.setImage(videoLocation, filter, thumbLocation, "50_50", avatarDrawable, chat);
+                avatarImage.setImage(videoLocation, filter, thumbLocation, "70_70", avatarDrawable, chat);
             }
             if (imageLocation != null && (prevLoadedImageLocation == null || imageLocation.photoId != prevLoadedImageLocation.photoId)) {
                 prevLoadedImageLocation = imageLocation;
@@ -10698,8 +10701,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             File destFile = FileLoader.getInstance(currentAccount).getPathToAttach(small, true);
                             File src = FileLoader.getInstance(currentAccount).getPathToAttach(avatar, true);
                             src.renameTo(destFile);
-                            String oldKey = avatar.volume_id + "_" + avatar.local_id + "@50_50";
-                            String newKey = small.location.volume_id + "_" + small.location.local_id + "@50_50";
+                            String oldKey = avatar.volume_id + "_" + avatar.local_id + "@70_70";
+                            String newKey = small.location.volume_id + "_" + small.location.local_id + "@70_70";
                             ImageLoader.getInstance().replaceImageInCache(oldKey, newKey, ImageLocation.getForUserOrChat(user, ImageLocation.TYPE_SMALL), false);
                         }
 
@@ -10739,7 +10742,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             } else {
                 avatar = smallSize.location;
                 avatarBig = bigSize.location;
-                avatarImage.setImage(ImageLocation.getForLocal(avatar), "50_50", avatarDrawable, null);
+                avatarImage.setImage(ImageLocation.getForLocal(avatar), "70_70", avatarDrawable, null);
                 if (setAvatarRow != -1) {
                     updateRowsIds();
                     if (listAdapter != null) {
