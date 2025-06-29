@@ -19,6 +19,10 @@ public final class DebugUtils {
         Log.d(TAG, "translateX: " + translateX + ", translateY: " + translateY);
     }
 
+    public static void logValue(String name, Object value) {
+        Log.d(TAG, name + " = " + value);
+    }
+
     public static void logValue(Object value) {
         Log.d(TAG, value.getClass().getSimpleName() + " = " + value);
     }
