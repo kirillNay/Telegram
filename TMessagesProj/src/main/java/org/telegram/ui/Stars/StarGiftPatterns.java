@@ -4,6 +4,9 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -203,6 +206,61 @@ public class StarGiftPatterns {
                 (int) (b + dpf2(y) - dpf2(size) / 2.0f),
                 (int) (r + dpf2(x) + dpf2(size) / 2.0f),
                 (int) (b + dpf2(y) + dpf2(size) / 2.0f)
+            );
+            pattern.setAlpha((int) (0xFF * alpha * thisAlpha));
+            pattern.draw(canvas);
+        }
+    }
+
+    private static final float[] profileCenteredPattern = new float[] {
+            // radius, sin, cos, scale, alpha
+            84, 0, 1, 1, .35f,
+            72, .5f, .87f, 1, .4f,
+             65, 1, 0, 1, .18f,
+            72, .5f, -.87f, 1, .4f,
+            84, 0, -1, 1, .35f,
+            72, -.5f, -.87f, 1, .4f,
+             65, -1, 0, 1, .25f,
+            72, -.5f, .87f, 1, .4f,
+
+            86, .87f, .5f, .85f, .18f,
+            86, .87f, -.5f, .85f, .18f,
+            86, -.87f, -.5f, .85f, .21f,
+            86, -.87f, .5f, .85f, .21f,
+
+            138, 0, 1, .85f, .35f,
+            118, .5f, .87f, .85f, .35f,
+            118, .5f, -.87f, .85f, .35f,
+            138, 0, -1, .85f, .35f,
+            118, -.5f, -.87f, .85f, .35f,
+            118, -.5f, .87f, .85f, .35f,
+    };
+
+    public static void drawCenteredProfilePattern(
+            Canvas canvas,
+            Drawable pattern,
+            float initialCX,
+            float initialCY,
+            float alpha,
+            boolean hasCutout
+    ) {
+        for (int i = 0; i < profileCenteredPattern.length; i += 5) {
+            if (hasCutout && i == 30) continue;
+
+            float rad = profileCenteredPattern[i];
+            float sin = profileCenteredPattern[i + 1];
+            float cos = profileCenteredPattern[i + 2];
+            float scale = profileCenteredPattern[i + 3];
+            float thisAlpha = profileCenteredPattern[i + 4];
+
+            float cx = initialCX + dpf2(rad * cos);
+            float cy = initialCY + dpf2(rad * sin);
+            float size = dpf2(24) * scale;
+            pattern.setBounds(
+                    (int) (cx - size / 2f),
+                    (int) (cy - size / 2f),
+                    (int) (cx + size / 2f),
+                    (int) (cy + size / 2f)
             );
             pattern.setAlpha((int) (0xFF * alpha * thisAlpha));
             pattern.draw(canvas);

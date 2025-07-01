@@ -42,7 +42,6 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
-import android.graphics.LinearGradient;
 import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -50,6 +49,7 @@ import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -79,6 +79,7 @@ import android.util.SparseArray;
 import android.util.SparseIntArray;
 import android.util.TypedValue;
 import android.view.Display;
+import android.view.DisplayCutout;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -87,6 +88,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
+import android.view.WindowInsets;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
@@ -1031,6 +1033,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             setWillNotDraw(false);
         }
 
+        private boolean hasCutout;
+        public void setHasCutout(boolean hasCutout) {
+            this.hasCutout = hasCutout;
+        }
+
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(widthMeasureSpec) + AndroidUtilities.dp(3));
@@ -1055,7 +1062,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         private final AnimatedColor color2Animated = new AnimatedColor(this, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
 
         private int backgroundGradientColor1, backgroundGradientColor2, backgroundGradientHeight;
-        private LinearGradient backgroundGradient;
+        private Shader backgroundGradient;
         private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
         public void setBackgroundColorId(MessagesController.PeerColor peerColor, boolean animated) {
@@ -1157,7 +1164,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 final int color2 = color2Animated.set(this.color2);
                 final int gradientHeight = AndroidUtilities.statusBarHeight + AndroidUtilities.dp(144);
                 if (backgroundGradient == null || backgroundGradientColor1 != color1 || backgroundGradientColor2 != color2 || backgroundGradientHeight != gradientHeight) {
-                    backgroundGradient = new LinearGradient(0, 0, 0, backgroundGradientHeight = gradientHeight, new int[] { backgroundGradientColor2 = color2, backgroundGradientColor1 = color1 }, new float[] { 0, 1 }, Shader.TileMode.CLAMP);
+                    backgroundGradient = new RadialGradient(
+                            listView.getMeasuredWidth() / 2f - avatarContainer.getMeasuredWidth() / 2f,
+                            avatarY + avatarContainer.getMeasuredHeight() / 2 * avatarScale,
+                            backgroundGradientHeight = listView.getMeasuredWidth() / 2,
+                            new int[] { backgroundGradientColor2 = color2, backgroundGradientColor1 = color1 },
+                            null,
+                            Shader.TileMode.CLAMP
+                    );
                     backgroundPaint.setShader(backgroundGradient);
                 }
                 final float progressToGradient = (playProfileAnimation == 0 ? 1f : avatarAnimationProgress) * hasColorAnimated.set(hasColorById);
@@ -1174,15 +1188,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     if (loadedScale > 0) {
                         canvas.save();
                         canvas.clipRect(0, 0, getMeasuredWidth(), y1);
-                        StarGiftPatterns.drawProfilePattern(canvas, emoji, getMeasuredWidth(), ((actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + dp(144)) - (1f - listTopOffset
-                                / dp(88)) * dp(50), Math.min(1f, listTopOffset / dp(88)), full);
+
+                        StarGiftPatterns.drawCenteredProfilePattern(
+                                canvas,
+                                emoji,
+                                getMeasuredWidth() / 2f,
+                                getActionBarY() + AndroidUtilities.dp(7f) + DEFAULT_AVATAR_SCALE * INITIAL_AVATAR_CONTAINER_SIZE_PX / 2,
+                                Math.min(1f, listTopOffset / dp(88)),
+                                hasCutout
+                        );
+
                         canvas.restore();
                     }
                 }
                 if (previousTransitionFragment != null) {
                     ActionBar actionBar = previousTransitionFragment.getActionBar();
                     ActionBarMenu menu = actionBar.menu;
-                    if (actionBar != null && menu != null) {
+                    if (menu != null) {
                         int restoreCount = canvas.save();
                         canvas.translate(actionBar.getX() + menu.getX(), actionBar.getY() + menu.getY());
                         canvas.saveLayerAlpha(0, 0, menu.getMeasuredWidth(), menu.getMeasuredHeight(), (int) (255 * (1f - avatarAnimationProgress)), Canvas.ALL_SAVE_FLAG);
@@ -3054,6 +3076,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             @Override
             protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
                 super.onLayout(changed, left, top, right, bottom);
+                if (firstLayout) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        WindowInsets insets = getRootWindowInsets();
+                        DisplayCutout cutout = insets.getDisplayCutout();
+
+                        if (cutout == null) {
+                            topView.hasCutout = false;
+                            return;
+                        }
+
+                        topView.getLocationInWindow(AndroidUtilities.pointTmp2);
+                        AndroidUtilities.rectTmp2.set(AndroidUtilities.pointTmp2[0] + getMeasuredWidth() / 2  - dp(25), AndroidUtilities.pointTmp2[1], AndroidUtilities.pointTmp2[0] + getMeasuredWidth() / 2 + dp(25), AndroidUtilities.pointTmp2[1] + dp(30));
+                        DebugUtils.logValue(AndroidUtilities.rectTmp2);
+                        for (Rect cutoutRect : cutout.getBoundingRects()) {
+                            topView.hasCutout |= AndroidUtilities.rectTmp2.intersect(cutoutRect);
+                        }
+                    }
+                }
                 savedScrollPosition = -1;
                 firstLayout = false;
                 invalidateScroll = false;
@@ -4782,10 +4822,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             listView.setPadding(0, (int) OPENED_LIST_TOP_OFFSET, 0, 0);
         }
 
+        ViewGroup decorView;
+        if (Build.VERSION.SDK_INT >= 21) {
+            decorView = (ViewGroup) getParentActivity().getWindow().getDecorView();
+        } else {
+            decorView = frameLayout;
+        }
+
         // Creating header
         topView = new TopView(context);
         topView.setBackgroundColorId(peerColor, false);
         topView.setBackgroundColor(getThemedColor(Theme.key_avatar_backgroundActionBarBlue));
+
         frameLayout.addView(topView);
         contentView.blurBehindViews.add(topView);
 
@@ -5283,12 +5331,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         frameLayout.addView(fwdRestrictedHint, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 12, 0, 12, 0));
         sharedMediaLayout.setForwardRestrictedHint(fwdRestrictedHint);
 
-        ViewGroup decorView;
-        if (Build.VERSION.SDK_INT >= 21) {
-            decorView = (ViewGroup) getParentActivity().getWindow().getDecorView();
-        } else {
-            decorView = frameLayout;
-        }
         pinchToZoomHelper = new PinchToZoomHelper(decorView, frameLayout) {
 
             Paint statusBarPaint;
@@ -7343,7 +7385,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         collapseAnimatorValues[0] = value;
                         collapseAnimatorValues[1] = 1f;
                         collapseAnimator.setDuration((long) ((1f - value) * 250f / durationFactor));
-                        DebugUtils.logValue("duration туда", collapseAnimator.getDuration());
 
                         initialCollapseAvatarScale = 0;
                         initialCollapseAvatarY = -avatarContainer.getHeight() * avatarContainer.getScaleY();
@@ -7356,7 +7397,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         collapseAnimatorValues[0] = value;
                         collapseAnimatorValues[1] = 0f;
                         collapseAnimator.setDuration((long) (value * 250f / durationFactor));
-                        DebugUtils.logValue("duration сюда", collapseAnimator.getDuration());
 
                         initialCollapseAvatarScale = 0;
                         initialCollapseAvatarY = -avatarContainer.getHeight() * avatarContainer.getScaleY();
