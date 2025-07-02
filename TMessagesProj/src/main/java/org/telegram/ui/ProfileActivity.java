@@ -122,7 +122,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
-import org.telegram.DebugUtils;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -480,6 +479,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private final float[] collapseAnimatorValues = new float[]{0f, 1f};
     private float initialCollapseAvatarScale;
     private float initialCollapseAvatarY;
+    private float collapseProgress;
 
     private boolean isInLandscapeMode;
     private boolean needSettleDownScrolling;
@@ -1034,9 +1034,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
 
         private boolean hasCutout;
-        public void setHasCutout(boolean hasCutout) {
-            this.hasCutout = hasCutout;
-        }
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
@@ -1166,7 +1163,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 if (backgroundGradient == null || backgroundGradientColor1 != color1 || backgroundGradientColor2 != color2 || backgroundGradientHeight != gradientHeight) {
                     backgroundGradient = new RadialGradient(
                             listView.getMeasuredWidth() / 2f - avatarContainer.getMeasuredWidth() / 2f,
-                            avatarY + avatarContainer.getMeasuredHeight() / 2 * avatarScale,
+                            avatarY + avatarContainer.getMeasuredHeight() / 2f * avatarScale,
                             backgroundGradientHeight = listView.getMeasuredWidth() / 2,
                             new int[] { backgroundGradientColor2 = color2, backgroundGradientColor1 = color1 },
                             null,
@@ -1195,7 +1192,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 getMeasuredWidth() / 2f,
                                 getActionBarY() + AndroidUtilities.dp(7f) + DEFAULT_AVATAR_SCALE * INITIAL_AVATAR_CONTAINER_SIZE_PX / 2,
                                 Math.min(1f, listTopOffset / dp(88)),
-                                hasCutout
+                                hasCutout,
+                                getMeasuredWidth() / 2f,
+                                avatarContainer.getY() + avatarContainer.getMeasuredHeight() / 2f * avatarScale,
+                                collapseProgress
                         );
 
                         canvas.restore();
@@ -3088,7 +3088,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
                         topView.getLocationInWindow(AndroidUtilities.pointTmp2);
                         AndroidUtilities.rectTmp2.set(AndroidUtilities.pointTmp2[0] + getMeasuredWidth() / 2  - dp(25), AndroidUtilities.pointTmp2[1], AndroidUtilities.pointTmp2[0] + getMeasuredWidth() / 2 + dp(25), AndroidUtilities.pointTmp2[1] + dp(30));
-                        DebugUtils.logValue(AndroidUtilities.rectTmp2);
                         for (Rect cutoutRect : cutout.getBoundingRects()) {
                             topView.hasCutout |= AndroidUtilities.rectTmp2.intersect(cutoutRect);
                         }
@@ -5309,17 +5308,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         collapseAnimator = ValueAnimator.ofFloat(0f, 1f);
         collapseAnimator.addUpdateListener(anim -> setAvatarCollapseProgress(anim.getAnimatedFraction()));
-        collapseAnimator.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                DebugUtils.log("collapseAnimator: onAnimationEnd");
-            }
 
-            @Override
-            public void onAnimationStart(Animator animation) {
-                DebugUtils.log("collapseAnimator: onAnimationStart");
-            }
-        });
         collapseAnimator.setInterpolator(CubicBezierInterpolator.EASE_BOTH);
 
         updateRowsIds();
@@ -5753,21 +5742,29 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (listTopOffset > OPENED_LIST_TOP_OFFSET) {
             float idleAvatarY = getActionBarY() + AndroidUtilities.dp(7f);
             avatarY = AndroidUtilities.lerp(idleAvatarY, idleAvatarY + AndroidUtilities.dp(32f), Math.min(1, expandProgress * 3f));
-            avatarScale = AndroidUtilities.lerp((42f + 46f) / 42f, (42f + 46f + 24f) / 42f, Math.min(1f, expandProgress * 3f));
+            avatarScale = lerp(lerp((42f + 46f) / 42f, (42f + 46f + 24f) / 42f, Math.min(1f, expandProgress * 3f)), initialCollapseAvatarScale, progress);
 
             avatarImage.setInnerScale(lerp(1f, (46f + 4f) / 46f,  Math.min(1f, expandProgress * 3)));
         } else {
             final float diff = Math.min(1f, listTopOffset / OPENED_LIST_TOP_OFFSET);
             float targetAvatarY = getActionBarY() + AndroidUtilities.dp(7f);
-            avatarScale = (42f + 46f * diff) / 42f;
+            avatarScale = lerp((42f + 46f * diff) / 42f, initialCollapseAvatarScale, progress);
             avatarY = targetAvatarY - (OPENED_LIST_TOP_OFFSET - listTopOffset);
         }
 
-        avatarContainer.setScaleY(lerp(avatarScale, initialCollapseAvatarScale, progress));
-        avatarContainer.setScaleX(lerp(avatarScale, initialCollapseAvatarScale, progress));
+        float currentAvatarCY = avatarY + avatarContainer.getHeight() / 2f * avatarScale;
+        float idleAvatarCy = getActionBarY() + AndroidUtilities.dp(7) + avatarContainer.getHeight() / 2f * avatarScale;
+        collapseProgress = Math.min(1f, (idleAvatarCy - currentAvatarCY) / idleAvatarCy);
+
+        avatarContainer.setScaleY(avatarScale);
+        avatarContainer.setScaleX(avatarScale);
 
         avatarContainer.setTranslationY(lerp(avatarY, initialCollapseAvatarY, progress));
         avatarContainer.setTranslationX(((float) Math.ceil(listView.getMeasuredWidth() / 2f) - (float) Math.ceil(avatarContainer.getMeasuredWidth() / 2f)));
+
+        if (topView != null) {
+            topView.invalidate();
+        }
     }
 
     private int getSmallAvatarRoundRadius() {
@@ -7375,7 +7372,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
             } else if (listTopOffset <= OPENED_LIST_TOP_OFFSET) {
                 needSettleDownScrolling = true;
-                // Точка невозврата, после которой начинаем анимацию закрытия
+
+                float currentAvatarCY = avatarY + avatarContainer.getHeight() / 2f * avatarScale;
+                float idleAvatarCy = getActionBarY() + AndroidUtilities.dp(7) + avatarContainer.getHeight() / 2f * avatarScale;
+                collapseProgress = Math.min(1f, (idleAvatarCy - currentAvatarCY) / idleAvatarCy);
+
                 if (expandProgress <= -0.15 && !openAnimationInProgress) {
                     if (!isCollapsed && collapseAnimator != null) {
                         isCollapsed = true;

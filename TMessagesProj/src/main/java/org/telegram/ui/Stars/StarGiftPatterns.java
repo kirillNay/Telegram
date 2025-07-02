@@ -2,6 +2,7 @@ package org.telegram.ui.Stars;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
+import static org.telegram.messenger.AndroidUtilities.lerp;
 
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -10,6 +11,7 @@ import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
 
 public class StarGiftPatterns {
@@ -213,28 +215,31 @@ public class StarGiftPatterns {
     }
 
     private static final float[] profileCenteredPattern = new float[] {
-            // radius, sin, cos, scale, alpha
-            84, 0, 1, 1, .35f,
-            72, .5f, .87f, 1, .4f,
-             65, 1, 0, 1, .18f,
-            72, .5f, -.87f, 1, .4f,
-            84, 0, -1, 1, .35f,
-            72, -.5f, -.87f, 1, .4f,
-             65, -1, 0, 1, .25f,
-            72, -.5f, .87f, 1, .4f,
+            // radius, sin, cos, scale, alpha, min progress, max progress
+             84, 0, 1, 1, .35f, .08f, .62f,
+            72, .5f, .87f, 1, .4f, .05f, .44f,
+             65, 1, 0, 1, .18f, .05f, .62f,
+            72, .5f, -.87f, 1, .4f, .05f, .44f,
+             84, 0, -1, 1, .35f, .08f, .62f,
+            72, -.5f, -.87f, 1, .4f, .05f, .44f,
+             65, -1, 0, 1, .25f, .05f, .44f,
+            72, -.5f, .87f, 1, .4f, .05f, .44f,
 
-            86, .87f, .5f, .85f, .18f,
-            86, .87f, -.5f, .85f, .18f,
-            86, -.87f, -.5f, .85f, .21f,
-            86, -.87f, .5f, .85f, .21f,
+            86, .87f, .5f, .85f, .18f, .05f, .74f,
+            86, .87f, -.5f, .85f, .18f, .05f, .74f,
+            86, -.87f, -.5f, .85f, .21f, .05f, .52f,
+            86, -.87f, .5f, .85f, .21f, .05f, .52f,
 
-            138, 0, 1, .85f, .35f,
-            118, .5f, .87f, .85f, .35f,
-            118, .5f, -.87f, .85f, .35f,
-            138, 0, -1, .85f, .35f,
-            118, -.5f, -.87f, .85f, .35f,
-            118, -.5f, .87f, .85f, .35f,
+             138, 0, 1, .85f, .35f, .08f, .74f,
+            118, .5f, .87f, .85f, .35f, .05f, .52f,
+            118, .5f, -.87f, .85f, .35f, .05f, .52f,
+             138, 0, -1, .85f, .35f, .08f, .74f,
+            118, -.5f, -.87f, .85f, .35f, .05f, .52f,
+            118, -.5f, .87f, .85f, .35f, .05f, .52f,
     };
+
+    private final static Paint centerPaint = new Paint();
+    private final static Paint avatarCenterPaint = new Paint();
 
     public static void drawCenteredProfilePattern(
             Canvas canvas,
@@ -242,10 +247,13 @@ public class StarGiftPatterns {
             float initialCX,
             float initialCY,
             float alpha,
-            boolean hasCutout
+            boolean hasCutout,
+            float avatarCX,
+            float avatarCY,
+            float progress
     ) {
-        for (int i = 0; i < profileCenteredPattern.length; i += 5) {
-            if (hasCutout && i == 30) continue;
+        for (int i = 0; i < profileCenteredPattern.length; i += 7) {
+            if (hasCutout && i == 42) continue;
 
             float rad = profileCenteredPattern[i];
             float sin = profileCenteredPattern[i + 1];
@@ -253,16 +261,31 @@ public class StarGiftPatterns {
             float scale = profileCenteredPattern[i + 3];
             float thisAlpha = profileCenteredPattern[i + 4];
 
-            float cx = initialCX + dpf2(rad * cos);
-            float cy = initialCY + dpf2(rad * sin);
-            float size = dpf2(24) * scale;
+            float minProgress = profileCenteredPattern[i + 5];
+            float maxProgress = profileCenteredPattern[i + 6];
+
+            float p0X = initialCX + dpf2(rad * cos);
+            float p0Y = initialCY + dpf2(rad * sin);
+
+            float p1X = lerp(avatarCX, p0X, .25f);
+            float p1Y = initialCY + dpf2(rad * sin);
+
+            float p2X = avatarCX;
+            float p2Y = avatarCY;
+
+            float realProgress = Utilities.clamp((progress - minProgress) / (maxProgress -  minProgress), 1f, 0f);
+            float cx = (1 - realProgress) * (1 - realProgress) * p0X + 2 * (1 - realProgress) * realProgress * p1X + realProgress * realProgress * p2X;
+            float cy = (1 - realProgress) * (1 - realProgress) * p0Y + 2 * (1 - realProgress) * realProgress * p1Y + realProgress * realProgress * p2Y;
+
+            float size = dpf2(24) * scale * lerp(1f, .5f, realProgress);
+
             pattern.setBounds(
                     (int) (cx - size / 2f),
                     (int) (cy - size / 2f),
                     (int) (cx + size / 2f),
                     (int) (cy + size / 2f)
             );
-            pattern.setAlpha((int) (0xFF * alpha * thisAlpha));
+            pattern.setAlpha((int) (0xFF * alpha * thisAlpha * lerp(1f, .5f, realProgress)));
             pattern.draw(canvas);
         }
     }
