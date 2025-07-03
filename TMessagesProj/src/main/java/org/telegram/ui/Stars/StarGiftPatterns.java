@@ -216,30 +216,27 @@ public class StarGiftPatterns {
 
     private static final float[] profileCenteredPattern = new float[] {
             // radius, sin, cos, scale, alpha, min progress, max progress
-             84, 0, 1, 1, .35f, .08f, .62f,
-            72, .5f, .87f, 1, .4f, .05f, .44f,
-             65, 1, 0, 1, .18f, .05f, .62f,
-            72, .5f, -.87f, 1, .4f, .05f, .44f,
-             84, 0, -1, 1, .35f, .08f, .62f,
-            72, -.5f, -.87f, 1, .4f, .05f, .44f,
-             65, -1, 0, 1, .25f, .05f, .44f,
-            72, -.5f, .87f, 1, .4f, .05f, .44f,
+             84, 0, 1, 1, .32f,             .08f, .62f,
+            72, .5f, .87f, 1, .34f,         .05f, .44f,
+             65, 1, 0, 1, .32f,             .05f, .62f,
+            72, .5f, -.87f, 1, .34f,        .05f, .44f,
+             84, 0, -1, 1, .32f,            .08f, .62f,
+            72, -.5f, -.87f, 1, .34f,       .05f, .44f,
+             65, -1, 0, 1, .18f,            .05f, .44f,
+            72, -.5f, .87f, 1, .34f,        .05f, .44f,
 
-            86, .87f, .5f, .85f, .18f, .05f, .74f,
-            86, .87f, -.5f, .85f, .18f, .05f, .74f,
-            86, -.87f, -.5f, .85f, .21f, .05f, .52f,
-            86, -.87f, .5f, .85f, .21f, .05f, .52f,
+            86, .87f, .5f, .85f, .18f,      .05f, .74f,
+            86, .87f, -.5f, .85f, .18f,     .05f, .74f,
+            86, -.87f, -.5f, .85f, .21f,    .05f, .52f,
+            86, -.87f, .5f, .85f, .21f,     .05f, .52f,
 
-             138, 0, 1, .85f, .35f, .08f, .74f,
-            118, .5f, .87f, .85f, .35f, .05f, .52f,
-            118, .5f, -.87f, .85f, .35f, .05f, .52f,
-             138, 0, -1, .85f, .35f, .08f, .74f,
-            118, -.5f, -.87f, .85f, .35f, .05f, .52f,
-            118, -.5f, .87f, .85f, .35f, .05f, .52f,
+             138, 0, 1, .85f, .16f,         .08f, .74f,
+            118, .5f, .87f, .85f, .16f,     .05f, .52f,
+            118, .5f, -.87f, .85f, .16f,    .05f, .52f,
+             138, 0, -1, .85f, .16f,        .08f, .74f,
+            118, -.5f, -.87f, .85f, .16f,   .05f, .52f,
+            118, -.5f, .87f, .85f, .16f,    .05f, .52f,
     };
-
-    private final static Paint centerPaint = new Paint();
-    private final static Paint avatarCenterPaint = new Paint();
 
     public static void drawCenteredProfilePattern(
             Canvas canvas,
