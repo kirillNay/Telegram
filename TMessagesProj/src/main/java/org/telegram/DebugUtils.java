@@ -37,6 +37,10 @@ public final class DebugUtils {
         Log.d(TAG, message);
     }
 
+    public static void error(Throwable exception) {
+        Log.d(TAG, "Exception", exception);
+    }
+
     private static final String TAG = "kirillNay";
 
 }
