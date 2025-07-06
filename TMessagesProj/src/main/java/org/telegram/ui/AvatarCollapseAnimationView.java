@@ -67,7 +67,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         };
 
 
-        private int avatarProgram;
+        private int eglProgram;
 
         private int avatarTexture;
 
@@ -100,6 +100,8 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         private volatile boolean isImageTexturePrepared = false;
 
         private volatile boolean invalid = true;
+
+        private boolean isAvatarAnimated = false;
 
         // Callbacks
         private Runnable onRenderStopped;
@@ -168,6 +170,15 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
                 while(this.isPrepared && !isReleased) {
                     long start = System.currentTimeMillis();
                     if (isRunning) {
+                        if (isAvatarAnimated) {
+                            try {
+                                initImageTexture();
+                            } catch (InternalRenderException e) {
+                                DebugUtils.error(e);
+                                isPrepared = false;
+                                continue;
+                            }
+                        }
                         dispatchDraw();
                         if (onRenderStarted != null) {
                             ensureRunOnUIThread(onRenderStarted);
@@ -270,21 +281,21 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             // Compiling shaders
             int avatarVertexShader = createShader(GLES31.GL_VERTEX_SHADER, AndroidUtilities.readRes(R.raw.avatar_collapse_vertex));
             int avatarFragmentShader = createShader(GLES31.GL_FRAGMENT_SHADER, AndroidUtilities.readRes(R.raw.avatar_collapse_fragment));
-            avatarProgram = createProgram(avatarVertexShader, avatarFragmentShader);
+            eglProgram = createProgram(avatarVertexShader, avatarFragmentShader);
 
             // Linking uniform vars
-            uResolutionLoc = GLES20.glGetUniformLocation(avatarProgram, "u_Resolution");
-            uAvatarRadiusLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AvatarRadius");
-            uAvatarTextureLoc = GLES20.glGetUniformLocation(avatarProgram, "u_Texture");
-            uBlurAmountLoc = GLES20.glGetUniformLocation(avatarProgram, "u_BlurAmount");
-            uBlurRadiusLoc = GLES20.glGetUniformLocation(avatarProgram, "u_BlurRadius");
-            uAlphaAmountLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AvatarAlpha");
-            uAvatarScaleLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AvatarScale");
-            uAvatarCenterLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AvatarCenter");
-            uAttractionRadiusLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AttractionRadius");
-            uAvatarCenterTransitionLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AvatarCenterTransition");
-            uTopAttractionPointRadiusLoc = GLES20.glGetUniformLocation(avatarProgram, "u_TopAttractionPointRadius");
-            uGradientRadius = GLES20.glGetUniformLocation(avatarProgram, "u_GradientRadius");
+            uResolutionLoc = GLES20.glGetUniformLocation(eglProgram, "u_Resolution");
+            uAvatarRadiusLoc = GLES20.glGetUniformLocation(eglProgram, "u_AvatarRadius");
+            uAvatarTextureLoc = GLES20.glGetUniformLocation(eglProgram, "u_Texture");
+            uBlurAmountLoc = GLES20.glGetUniformLocation(eglProgram, "u_BlurAmount");
+            uBlurRadiusLoc = GLES20.glGetUniformLocation(eglProgram, "u_BlurRadius");
+            uAlphaAmountLoc = GLES20.glGetUniformLocation(eglProgram, "u_AvatarAlpha");
+            uAvatarScaleLoc = GLES20.glGetUniformLocation(eglProgram, "u_AvatarScale");
+            uAvatarCenterLoc = GLES20.glGetUniformLocation(eglProgram, "u_AvatarCenter");
+            uAttractionRadiusLoc = GLES20.glGetUniformLocation(eglProgram, "u_AttractionRadius");
+            uAvatarCenterTransitionLoc = GLES20.glGetUniformLocation(eglProgram, "u_AvatarCenterTransition");
+            uTopAttractionPointRadiusLoc = GLES20.glGetUniformLocation(eglProgram, "u_TopAttractionPointRadius");
+            uGradientRadius = GLES20.glGetUniformLocation(eglProgram, "u_GradientRadius");
 
             vertexBuffer = ByteBuffer
                     .allocateDirect(vertexData.length * 4)
@@ -301,19 +312,26 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             indexBuffer.position(0);
             vertexBuffer.position(0);
 
+            // creating vbo
+            int[] vboIds = new int[1];
+            GLES20.glGenBuffers(1, vboIds, 0);
+            int vertexVboId = vboIds[0];
+
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexVboId);
+            vertexBuffer.position(0);
+            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, vertexData.length * 4, vertexBuffer, GLES20.GL_STATIC_DRAW);
+
             // Linking attributes
             vertexBuffer.position(0);
-            aPositionLoc = GLES20.glGetAttribLocation(avatarProgram, "a_Position");
+            aPositionLoc = GLES20.glGetAttribLocation(eglProgram, "a_Position");
             GLES20.glEnableVertexAttribArray(aPositionLoc);
-            GLES20.glVertexAttribPointer(aPositionLoc, 2, GLES20.GL_FLOAT, false, 4 * 4, vertexBuffer);
+            GLES20.glVertexAttribPointer(aPositionLoc, 2, GLES20.GL_FLOAT, false, 4 * 4, 0);
 
-            aTexCordsLoc = GLES20.glGetAttribLocation(avatarProgram, "a_TexCoord");
+            aTexCordsLoc = GLES20.glGetAttribLocation(eglProgram, "a_TexCoord");
             GLES20.glEnableVertexAttribArray(aTexCordsLoc);
-            vertexBuffer.position(2);
-            GLES20.glVertexAttribPointer(
-                    aTexCordsLoc, 2, GLES20.GL_FLOAT, false,
-                    4 * 4, vertexBuffer
-            );
+            GLES20.glVertexAttribPointer(aTexCordsLoc, 2, GLES20.GL_FLOAT, false, 4 * 4, 2 * 4);
+
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
 
             GLES31.glViewport(0, 0, width, height);
             GLES31.glEnable(GLES31.GL_BLEND);
@@ -322,7 +340,16 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         }
 
         private void initImageTexture() throws InternalRenderException {
-            Bitmap avatarBitmap = imageReceiver.getBitmap();
+            isAvatarAnimated = imageReceiver.getAnimation() != null;
+
+            Bitmap avatarBitmap;
+            if (isAvatarAnimated) {
+                imageReceiver.getAnimation().updateCurrentFrame(System.currentTimeMillis(), false);
+                avatarBitmap = imageReceiver.getAnimation().getAnimatedBitmap();
+            } else {
+                avatarBitmap = imageReceiver.getBitmap();
+            }
+
             if (avatarBitmap != null) {
                 try {
                     int[] textures = new int[1];
@@ -385,7 +412,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             glClear(GL_COLOR_BUFFER_BIT);
 
             // drawing avatarProgram
-            glUseProgram(avatarProgram);
+            glUseProgram(eglProgram);
             if (invalid) setAvatarProgramUniforms();
 
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
