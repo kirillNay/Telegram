@@ -1,10 +1,20 @@
 package org.telegram;
 
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.util.Log;
 
 public final class DebugUtils {
+
+    public static Paint debugPaint1 = new Paint();
+    public static Paint debugPaint2 = new Paint();
+
+    static {
+        debugPaint1.setColor(Color.argb(255, 255, 0, 0));
+        debugPaint1.setColor(Color.argb(255, 0, 255, 255));
+    }
 
     public static void logCanvasInfo(Canvas canvas) {
         Matrix matrix = new Matrix();

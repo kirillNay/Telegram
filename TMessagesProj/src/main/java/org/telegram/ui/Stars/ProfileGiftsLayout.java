@@ -262,7 +262,8 @@ public class ProfileGiftsLayout implements NotificationCenter.NotificationCenter
             float alpha,
             float avatarCX,
             float avatarCY,
-            float collapseProgress
+            float collapseProgress,
+            boolean isExpanding
     ) {
         if (gifts.isEmpty() || collapseProgress >= 1.0f) return;
 
@@ -289,6 +290,10 @@ public class ProfileGiftsLayout implements NotificationCenter.NotificationCenter
             float realProgress = Utilities.clamp((collapseProgress - minProgress) / (maxProgress -  minProgress), 1f, 0f);
             float cx = (1 - realProgress) * (1 - realProgress) * p0X + 2 * (1 - realProgress) * realProgress * p1X + realProgress * realProgress * p2X;
             float cy = (1 - realProgress) * (1 - realProgress) * p0Y + 2 * (1 - realProgress) * realProgress * p1Y + realProgress * realProgress * p2Y;
+
+            if (isExpanding) {
+                cy += (avatarCY - initialCY) / 2f;
+            }
 
             gift.draw(
                     canvas,

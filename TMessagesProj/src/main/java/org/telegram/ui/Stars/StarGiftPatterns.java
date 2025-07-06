@@ -247,7 +247,8 @@ public class StarGiftPatterns {
             boolean hasCutout,
             float avatarCX,
             float avatarCY,
-            float progress
+            float progress,
+            boolean isExpanding
     ) {
         for (int i = 0; i < profileCenteredPattern.length; i += 7) {
             if (hasCutout && i == 42) continue;
@@ -273,6 +274,10 @@ public class StarGiftPatterns {
             float realProgress = Utilities.clamp((progress - minProgress) / (maxProgress -  minProgress), 1f, 0f);
             float cx = (1 - realProgress) * (1 - realProgress) * p0X + 2 * (1 - realProgress) * realProgress * p1X + realProgress * realProgress * p2X;
             float cy = (1 - realProgress) * (1 - realProgress) * p0Y + 2 * (1 - realProgress) * realProgress * p1Y + realProgress * realProgress * p2Y;
+
+            if (isExpanding) {
+                cy += (avatarCY - initialCY) / 2f;
+            }
 
             float size = dpf2(24) * scale * lerp(1f, .5f, realProgress);
 

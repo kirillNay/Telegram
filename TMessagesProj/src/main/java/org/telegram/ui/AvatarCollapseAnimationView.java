@@ -53,7 +53,6 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         private EGLDisplay eglDisplay;
         private EGLSurface eglSurface;
 
-        private FloatBuffer vertexBuffer;
         private ShortBuffer indexBuffer;
         private final float[] vertexData = {
                 -1f,  1f,   0f, 0f,
@@ -297,7 +296,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             uTopAttractionPointRadiusLoc = GLES20.glGetUniformLocation(eglProgram, "u_TopAttractionPointRadius");
             uGradientRadius = GLES20.glGetUniformLocation(eglProgram, "u_GradientRadius");
 
-            vertexBuffer = ByteBuffer
+            FloatBuffer vertexBuffer = ByteBuffer
                     .allocateDirect(vertexData.length * 4)
                     .order(ByteOrder.nativeOrder())
                     .asFloatBuffer()
@@ -510,7 +509,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
     private float collapseProgress;
     private RectF avatarContainerRect;
 
-    public AvatarCollapseAnimationView(Context context, ImageReceiver imageReceiver, float initialAvatarY) {
+    public AvatarCollapseAnimationView(Context context, ImageReceiver imageReceiver) {
         super(context);
         this.imageReceiver = imageReceiver;
         setSurfaceTextureListener(this);
