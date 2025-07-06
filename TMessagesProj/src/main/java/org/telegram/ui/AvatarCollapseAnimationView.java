@@ -3,6 +3,7 @@ package org.telegram.ui;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.opengl.EGL14;
 import android.opengl.EGLConfig;
@@ -12,10 +13,8 @@ import android.opengl.EGLSurface;
 import android.opengl.GLES20;
 import android.opengl.GLES31;
 import android.opengl.GLUtils;
-import android.opengl.Matrix;
+import android.os.Looper;
 import android.view.TextureView;
-import android.view.View;
-import android.widget.FrameLayout;
 import androidx.annotation.NonNull;
 import org.telegram.DebugUtils;
 import org.telegram.messenger.AndroidUtilities;
@@ -35,6 +34,8 @@ import static android.opengl.GLES20.GL_COMPILE_STATUS;
 import static android.opengl.GLES20.GL_LINK_STATUS;
 import static android.opengl.GLES20.glClear;
 import static android.opengl.GLES20.glUseProgram;
+import static org.telegram.messenger.AndroidUtilities.lerp;
+import static org.telegram.messenger.Utilities.clamp;
 
 @SuppressLint("ViewConstructor")
 public class AvatarCollapseAnimationView extends TextureView implements TextureView.SurfaceTextureListener {
@@ -43,7 +44,9 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
 
         private final SurfaceTexture surfaceTexture;
         private final ImageReceiver imageReceiver;
-        private final FrameLayout avatarContainer;
+
+        private final RectF avatarContainerRect = new RectF();
+        private float collapseProgress = 0f;
 
         // EGL
         private EGLContext eglContext;
@@ -62,19 +65,28 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             0, 1, 2,
             0, 2, 3
         };
-        private int eglProgram;
+
+
+        private int avatarProgram;
+
         private int avatarTexture;
 
         private int width;
         private int height;
 
-        private final float[] avatarModelMatrix = new float[16];
-
         // Uniforms
         private int uResolutionLoc;
         private int uAvatarRadiusLoc;
         private int uAvatarTextureLoc;
-        private int uAvatarModelLoc;
+        private int uBlurAmountLoc;
+        private int uBlurRadiusLoc;
+        private int uAlphaAmountLoc;
+        private int uAvatarScaleLoc;
+        private int uAvatarCenterLoc;
+        private int uAvatarCenterTransitionLoc;
+        private int uAttractionRadiusLoc;
+        private int uTopAttractionPointRadiusLoc;
+        private int uGradientRadius;
 
         // Attributes
         private int aTexCordsLoc;
@@ -84,13 +96,18 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         private volatile boolean isInitialized = false;
         private volatile boolean isReleased = false;
         private volatile boolean isRunning = false;
+        private volatile boolean isPrepared = false;
+        private volatile boolean isImageTexturePrepared = false;
 
         private volatile boolean invalid = true;
+
+        // Callbacks
+        private Runnable onRenderStopped;
+        private Runnable onRenderStarted;
 
         private RenderThread(
                 SurfaceTexture surfaceTexture,
                 ImageReceiver imageReceiver,
-                FrameLayout avatarContainer,
                 int width,
                 int height
         ) {
@@ -99,7 +116,20 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             this.width = width;
             this.height = height;
             this.imageReceiver = imageReceiver;
-            this.avatarContainer = avatarContainer;
+        }
+
+        public void setCollapseProgress(float collapseProgress) {
+            if (this.collapseProgress == collapseProgress) return;
+
+            this.collapseProgress = collapseProgress;
+            invalid = true;
+        }
+
+        public void setAvatarContainerRect(RectF avatarContainerRect) {
+            if (this.avatarContainerRect.equals(avatarContainerRect)) return;
+
+            this.avatarContainerRect.set(avatarContainerRect);
+            invalid = true;
         }
 
         public void setSize(int width, int height) {
@@ -111,7 +141,6 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         public void run() {
             try {
                 initGLContext();
-                initImageTexture();
                 isInitialized = true;
             } catch (Exception e) {
                 DebugUtils.error(e);
@@ -120,24 +149,72 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             super.run();
         }
 
-        private void startRendering() {
+        private void prepareRenderer(boolean isRunning) {
+            if (isPrepared || isReleased) return;
+
+            this.isRunning = isRunning;
+            isPrepared = true;
             postRunnable(() -> {
+                if (!isImageTexturePrepared) {
+                    try {
+                        initImageTexture();
+                    } catch (InternalRenderException e) {
+                        DebugUtils.error(e);
+                        isPrepared = false;
+                    }
+                }
+
                 final long maxdt = (long) (1000L / Math.max(30, AndroidUtilities.screenRefreshRate));
-                while(isRunning && !isReleased) {
+                while(this.isPrepared && !isReleased) {
                     long start = System.currentTimeMillis();
-                    dispatchDraw();
+                    if (isRunning) {
+                        dispatchDraw();
+                        if (onRenderStarted != null) {
+                            ensureRunOnUIThread(onRenderStarted);
+                            onRenderStarted = null;
+                        }
+                    }
+
                     long dt = System.currentTimeMillis() - start;
+
                     if (dt < maxdt - 1) {
                         try {
                             Thread.sleep(maxdt - 1 - dt);
                         } catch (Exception ignore) {}
+                    } else {
+                        DebugUtils.warn("Frame for +" + dt + "ms");
                     }
                 }
+
+                ensureRunOnUIThread(onRenderStopped);
+                if (!isReleased) {
+                    clearDraw();
+                }
+                isPrepared = false;
             });
         }
 
-        private void invalidate() {
-            invalid = true;
+        public void startRender(Runnable onStart) {
+            if (isRunning) return;
+
+            if (!isReleased && !isPrepared) {
+                onRenderStarted = onStart;
+                prepareRenderer(true);
+            } else {
+                onStart.run();
+                isRunning = true;
+            }
+        }
+
+        public void stopRender(Runnable onStopped) {
+            isRunning = false;
+            isPrepared = false;
+
+            this.onRenderStopped = onStopped;
+        }
+
+        public void pauseRender() {
+            isRunning = false;
         }
 
         private void initGLContext() throws InternalRenderException {
@@ -191,15 +268,23 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             }
 
             // Compiling shaders
-            int vertexShader = createShader(GLES31.GL_VERTEX_SHADER, AndroidUtilities.readRes(R.raw.avatar_collapse_vertex));
-            int fragmentShader = createShader(GLES31.GL_FRAGMENT_SHADER, AndroidUtilities.readRes(R.raw.avatar_collapse_fragment));
-            eglProgram = createProgram(vertexShader, fragmentShader);
+            int avatarVertexShader = createShader(GLES31.GL_VERTEX_SHADER, AndroidUtilities.readRes(R.raw.avatar_collapse_vertex));
+            int avatarFragmentShader = createShader(GLES31.GL_FRAGMENT_SHADER, AndroidUtilities.readRes(R.raw.avatar_collapse_fragment));
+            avatarProgram = createProgram(avatarVertexShader, avatarFragmentShader);
 
             // Linking uniform vars
-            uResolutionLoc = GLES20.glGetUniformLocation(eglProgram, "u_Resolution");
-            uAvatarRadiusLoc = GLES20.glGetUniformLocation(eglProgram, "u_AvatarRadius");
-            uAvatarTextureLoc = GLES20.glGetUniformLocation(eglProgram, "u_Texture");
-            uAvatarModelLoc = GLES20.glGetUniformLocation(eglProgram, "u_Model");
+            uResolutionLoc = GLES20.glGetUniformLocation(avatarProgram, "u_Resolution");
+            uAvatarRadiusLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AvatarRadius");
+            uAvatarTextureLoc = GLES20.glGetUniformLocation(avatarProgram, "u_Texture");
+            uBlurAmountLoc = GLES20.glGetUniformLocation(avatarProgram, "u_BlurAmount");
+            uBlurRadiusLoc = GLES20.glGetUniformLocation(avatarProgram, "u_BlurRadius");
+            uAlphaAmountLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AvatarAlpha");
+            uAvatarScaleLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AvatarScale");
+            uAvatarCenterLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AvatarCenter");
+            uAttractionRadiusLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AttractionRadius");
+            uAvatarCenterTransitionLoc = GLES20.glGetUniformLocation(avatarProgram, "u_AvatarCenterTransition");
+            uTopAttractionPointRadiusLoc = GLES20.glGetUniformLocation(avatarProgram, "u_TopAttractionPointRadius");
+            uGradientRadius = GLES20.glGetUniformLocation(avatarProgram, "u_GradientRadius");
 
             vertexBuffer = ByteBuffer
                     .allocateDirect(vertexData.length * 4)
@@ -218,11 +303,11 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
 
             // Linking attributes
             vertexBuffer.position(0);
-            aPositionLoc = GLES20.glGetAttribLocation(eglProgram, "a_Position");
+            aPositionLoc = GLES20.glGetAttribLocation(avatarProgram, "a_Position");
             GLES20.glEnableVertexAttribArray(aPositionLoc);
             GLES20.glVertexAttribPointer(aPositionLoc, 2, GLES20.GL_FLOAT, false, 4 * 4, vertexBuffer);
 
-            aTexCordsLoc = GLES20.glGetAttribLocation(eglProgram, "a_TexCoord");
+            aTexCordsLoc = GLES20.glGetAttribLocation(avatarProgram, "a_TexCoord");
             GLES20.glEnableVertexAttribArray(aTexCordsLoc);
             vertexBuffer.position(2);
             GLES20.glVertexAttribPointer(
@@ -234,8 +319,6 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             GLES31.glEnable(GLES31.GL_BLEND);
             GLES31.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
             GLES31.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-            GLES31.glUseProgram(eglProgram);
         }
 
         private void initImageTexture() throws InternalRenderException {
@@ -250,10 +333,10 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
                     GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, avatarBitmap, 0);
                     GLES20.glBindTexture(GL10.GL_TEXTURE_2D, 0);
                     avatarTexture = textures[0];
+                    isImageTexturePrepared = true;
                 } catch (Exception e) {
                     throw new InternalRenderException("Failed to create avatar bitmap texture", e);
                 }
-
             } else {
                 throw new InternalRenderException("There is no avatar bitmap");
             }
@@ -295,42 +378,16 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
 
         private void dispatchDraw() {
             if (!isInitialized) return;
-            if (!invalid) return;
 
             if (isReleased) throw new IllegalStateException("Render thread can't draw after release");
 
             GLES20.glClearColor(0f, 0f, 0f, 0f);
             glClear(GL_COLOR_BUFFER_BIT);
-            glUseProgram(eglProgram);
-            setUniforms();
-            draw();
 
-            glUseProgram(0);
-        }
+            // drawing avatarProgram
+            glUseProgram(avatarProgram);
+            if (invalid) setAvatarProgramUniforms();
 
-        private final float[] avatarCords = new float[2];
-        private void setUniforms() {
-            float textureScaleY = (avatarContainer.getHeight() * avatarContainer.getScaleY()) / (float) height;
-            float textureScaleX = (avatarContainer.getWidth() * avatarContainer.getScaleX()) / (float) width;
-            float textureWidth = height * textureScaleY;
-
-            GLES20.glUniform2f(uResolutionLoc, width, height);
-
-            GLES20.glUniform1f(uAvatarRadiusLoc, (avatarContainer.getHeight() * avatarContainer.getScaleY() / 2f) / textureWidth);
-
-            Matrix.setIdentityM(avatarModelMatrix, 0);
-
-            avatarCords[0] = avatarContainer.getX() + avatarContainer.getWidth() / 2f;
-            avatarCords[1] = avatarContainer.getY() + avatarContainer.getHeight() / 2f * avatarContainer.getScaleY();
-            normalizeCords(avatarCords, width, height);
-
-            Matrix.translateM(avatarModelMatrix, 0, avatarCords[0], avatarCords[1], 0.0f);
-            Matrix.scaleM(avatarModelMatrix, 0, textureScaleX, textureScaleY, 1.0f);
-
-            GLES20.glUniformMatrix4fv(uAvatarModelLoc, 1, false, avatarModelMatrix, 0);
-        }
-
-        private void draw() {
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, avatarTexture);
             GLES20.glUniform1i(uAvatarTextureLoc, 0);
@@ -343,6 +400,39 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
                 DebugUtils.error(e);
                 release();
             }
+            glUseProgram(0);
+            invalid = false;
+        }
+
+        private void clearDraw() {
+            GLES20.glClearColor(0f, 0f, 0f, 0f);
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+            EGL14.eglSwapBuffers(eglDisplay, eglSurface);
+        }
+
+        private void setAvatarProgramUniforms() {
+            float textureScaleY = avatarContainerRect.height() / (float) height;
+            float textureScaleX = avatarContainerRect.width() / (float) width;
+
+            GLES20.glUniform2f(uResolutionLoc, width, height);
+            GLES20.glUniform1f(uAvatarRadiusLoc, .5f);
+
+            float blurProgress = collapseProgress > .2f ? clamp(((collapseProgress - 0.2f) / 0.8f) * 5, 1f, 0f) : 0;
+            GLES20.glUniform1f(uBlurAmountLoc, blurProgress);
+            GLES20.glUniform1f(uBlurRadiusLoc, avatarContainerRect.height() / (10f - 4f * blurProgress));
+
+            float alphaAmount = collapseProgress > .2f ?  clamp(((collapseProgress - 0.2f) / 0.8f) * 2, 1f, 0f) : 0;
+            GLES20.glUniform1f(uAlphaAmountLoc, alphaAmount);
+
+            GLES20.glUniform2f(uAvatarScaleLoc, textureScaleX, textureScaleY);
+            GLES20.glUniform2f(uAvatarCenterTransitionLoc, (avatarContainerRect.centerX()) / (float) width, (height / 2f - avatarContainerRect.top) / avatarContainerRect.height());
+
+            GLES20.glUniform2f(uAvatarCenterLoc, avatarContainerRect.centerX(), avatarContainerRect.centerY());
+
+            GLES20.glUniform1f(uAttractionRadiusLoc, (avatarContainerRect.height() * 1.6f) / (float) height);
+            GLES20.glUniform1f(uTopAttractionPointRadiusLoc, (avatarContainerRect.height()) / (float) height);
+
+            GLES20.glUniform1f(uGradientRadius, lerp(0.0f, 0.3f, collapseProgress));
         }
 
         private void release() {
@@ -364,9 +454,13 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             isReleased = true;
         }
 
-        private static void normalizeCords(float[] cords, int width, int height) {
-            cords[0] = (cords[0] / width) * 2f - 1f;
-            cords[1] = 1f - (cords[1] / height) * 2f;
+        private static void ensureRunOnUIThread(Runnable runnable) {
+            if (runnable == null) return;
+            if (Thread.currentThread() != Looper.getMainLooper().getThread()) {
+                AndroidUtilities.runOnUIThread(runnable);
+            } else {
+                runnable.run();
+            }
         }
 
         private static class InternalRenderException extends Exception {
@@ -384,17 +478,13 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
 
     private RenderThread renderThread;
 
-    private final FrameLayout avatarContainer;
-
     private final ImageReceiver imageReceiver;
 
     private float collapseProgress;
+    private RectF avatarContainerRect;
 
-    private boolean invalid = true;
-
-    public AvatarCollapseAnimationView(Context context, FrameLayout avatarContainer, ImageReceiver imageReceiver) {
+    public AvatarCollapseAnimationView(Context context, ImageReceiver imageReceiver, float initialAvatarY) {
         super(context);
-        this.avatarContainer = avatarContainer;
         this.imageReceiver = imageReceiver;
         setSurfaceTextureListener(this);
 
@@ -402,37 +492,25 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
     }
 
     public void setCollapseProgress(float collapseProgress) {
-        if (this.collapseProgress == collapseProgress) {
-            return;
-        }
-
         this.collapseProgress = collapseProgress;
+
         if (renderThread != null) {
-            renderThread.invalidate();
+            renderThread.setCollapseProgress(collapseProgress);
         }
     }
 
-    @Override
-    public void setVisibility(int visibility) {
-        if (getVisibility() == visibility) return;
+    public void setAvatarContainerRect(RectF rect) {
+        this.avatarContainerRect = rect;
 
-        super.setVisibility(visibility);
-
-        if (visibility == View.VISIBLE && renderThread != null) {
-            startRender();
-        } else if (renderThread != null) {
-            stopRender();
+        if (renderThread != null) {
+            renderThread.setAvatarContainerRect(avatarContainerRect);
         }
     }
 
     @Override
     public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
-        renderThread = new RenderThread(surface, imageReceiver, avatarContainer, width, height);
+        renderThread = new RenderThread(surface, imageReceiver, width, height);
         renderThread.start();
-
-        if (getVisibility() == View.VISIBLE) {
-            startRender();
-        }
     }
 
     @Override
@@ -464,17 +542,23 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         renderThread = null;
     }
 
-    private void startRender() {
+    public void prepareRender() {
         if (renderThread != null) {
-            renderThread.isRunning = true;
-            renderThread.startRendering();
-            renderThread.invalidate();
+            renderThread.prepareRenderer(false);
         }
     }
 
-    private void stopRender() {
+    public void startRender(Runnable onStart) {
+        if (renderThread != null && !renderThread.isRunning) {
+            renderThread.startRender(onStart);
+            renderThread.setCollapseProgress(collapseProgress);
+            renderThread.setAvatarContainerRect(avatarContainerRect);
+        }
+    }
+
+    public void stopRender(Runnable onStopped) {
         if (renderThread != null) {
-            renderThread.isRunning = false;
+            renderThread.stopRender(onStopped);
         }
     }
 }

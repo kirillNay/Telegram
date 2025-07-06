@@ -38,7 +38,11 @@ public final class DebugUtils {
     }
 
     public static void error(Throwable exception) {
-        Log.d(TAG, "Exception", exception);
+        Log.e(TAG, "Exception", exception);
+    }
+
+    public static void warn(String message) {
+        Log.w(TAG, message);
     }
 
     private static final String TAG = "kirillNay";
