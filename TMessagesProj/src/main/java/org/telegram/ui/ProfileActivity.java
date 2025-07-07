@@ -123,7 +123,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
-import org.telegram.DebugUtils;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -1255,11 +1254,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         private final int statusBarHeight = actionBar.getOccupyStatusBar() && !inBubbleMode ? AndroidUtilities.statusBarHeight : 0;
 
         private final Rect topOverlayRect = new Rect();
-        private final Rect bottomOverlayRect = new Rect();
         private final RectF rect = new RectF();
 
         private final GradientDrawable topOverlayGradient;
-        private final GradientDrawable bottomOverlayGradient;
         private final ValueAnimator animator;
         private final float[] animatorValues = new float[]{0f, 1f};
         private final Paint backgroundPaint;
@@ -1294,9 +1291,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
             topOverlayGradient = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x42000000, 0});
             topOverlayGradient.setShape(GradientDrawable.RECTANGLE);
-
-            bottomOverlayGradient = new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, new int[]{0x42000000, 0});
-            bottomOverlayGradient.setShape(GradientDrawable.RECTANGLE);
 
             for (int i = 0; i < 2; i++) {
                 final GradientDrawable.Orientation orientation = i == 0 ? GradientDrawable.Orientation.LEFT_RIGHT : GradientDrawable.Orientation.RIGHT_LEFT;
@@ -1340,7 +1334,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (Build.VERSION.SDK_INT > 18) {
                 int alpha = (int) (255 * value);
                 topOverlayGradient.setAlpha(alpha);
-                bottomOverlayGradient.setAlpha(alpha);
                 backgroundPaint.setAlpha((int) (66 * value));
                 barPaint.setAlpha((int) (0x55 * value));
                 selectedBarPaint.setAlpha(alpha);
@@ -1384,9 +1377,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             final int actionBarHeight = statusBarHeight + ActionBar.getCurrentActionBarHeight();
             final float k = 0.5f;
             topOverlayRect.set(0, 0, w, (int) (actionBarHeight * k));
-            bottomOverlayRect.set(0, (int) (h - AndroidUtilities.dp(72f) * k), w, h);
             topOverlayGradient.setBounds(0, topOverlayRect.bottom, w, actionBarHeight + AndroidUtilities.dp(16f));
-            bottomOverlayGradient.setBounds(0, h - AndroidUtilities.dp(72f) - AndroidUtilities.dp(24f), w, bottomOverlayRect.top);
             pressedOverlayGradient[0].setBounds(0, 0, w / 5, h);
             pressedOverlayGradient[1].setBounds(w - (w / 5), 0, w, h);
         }
@@ -1401,9 +1392,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
 
             topOverlayGradient.draw(canvas);
-            bottomOverlayGradient.draw(canvas);
             canvas.drawRect(topOverlayRect, backgroundPaint);
-            canvas.drawRect(bottomOverlayRect, backgroundPaint);
 
             int count = avatarsViewPager.getRealCount();
             selectedPosition = avatarsViewPager.getRealPosition();
@@ -2987,7 +2976,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         paddingTop = (int) OPENED_LIST_TOP_OFFSET;
                         paddingBottom = 0;
                     } else {
-                        paddingTop = listView.getMeasuredWidth();
+                        paddingTop = getExpandedListViewOffset();
                         paddingBottom = Math.max(0, getMeasuredHeight() - (listContentHeight + (int) OPENED_LIST_TOP_OFFSET + actionBarHeight));
                     }
                     if (banFromGroup != 0) {
@@ -3003,7 +2992,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     layoutManager.scrollToPositionWithOffset(0, -actionBarHeight);
                     listView.setPadding(0, paddingTop, 0, paddingBottom);
                     measureChildWithMargins(listView, widthMeasureSpec, 0, heightMeasureSpec, 0);
-                    listView.layout(0, actionBarHeight, listView.getMeasuredWidth(), actionBarHeight + listView.getMeasuredHeight());
+                    listView.layout(0, actionBarHeight, getExpandedListViewOffset(), actionBarHeight + listView.getMeasuredHeight());
                     ignoreLayout = false;
                 } else if (fragmentOpened && !openAnimationInProgress && !firstLayout) {
                     ignoreLayout = true;
@@ -3014,7 +3003,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         paddingTop = (int) OPENED_LIST_TOP_OFFSET;
                         paddingBottom = 0;
                     } else {
-                        paddingTop = listView.getMeasuredWidth();
+                        paddingTop = getExpandedListViewOffset();
                         paddingBottom = Math.max(0, getMeasuredHeight() - (listContentHeight + (int) OPENED_LIST_TOP_OFFSET + actionBarHeight));
                     }
                     if (banFromGroup != 0) {
@@ -3073,7 +3062,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     if (layout) {
                         measureChildWithMargins(listView, widthMeasureSpec, 0, heightMeasureSpec, 0);
                         try {
-                            listView.layout(0, actionBarHeight, listView.getMeasuredWidth(), actionBarHeight + listView.getMeasuredHeight());
+                            listView.layout(0, actionBarHeight, getExpandedListViewOffset(), actionBarHeight + listView.getMeasuredHeight());
                         } catch (Exception e) {
                             FileLog.e(e);
                         }
@@ -3716,7 +3705,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         if (view != null) {
                             if (isPulledDown) {
                                 final int actionBarHeight = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
-                                listView.smoothScrollBy(0, view.getTop() - listView.getMeasuredWidth() + actionBarHeight, CubicBezierInterpolator.EASE_OUT_QUINT);
+                                listView.smoothScrollBy(0, view.getTop() - getExpandedListViewOffset() + actionBarHeight, CubicBezierInterpolator.EASE_OUT_QUINT);
                             } else if (!isCollapsed) {
                                 listView.smoothScrollBy(0, view.getTop() - (int) OPENED_LIST_TOP_OFFSET, CubicBezierInterpolator.EASE_OUT_QUINT);
                             } else {
@@ -5618,7 +5607,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             final View view = layoutManager.findViewByPosition(0);
             if (view != null) {
                 final int actionBarHeight = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
-                listView.smoothScrollBy(0, view.getTop() - listView.getMeasuredWidth() + actionBarHeight, CubicBezierInterpolator.EASE_OUT_QUINT);
+                listView.smoothScrollBy(0, view.getTop() - getExpandedListViewOffset() + actionBarHeight, CubicBezierInterpolator.EASE_OUT_QUINT);
                 return true;
             }
         }
@@ -7206,14 +7195,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             final float diff = Math.min(1f, listTopOffset / OPENED_LIST_TOP_OFFSET);
 
             listView.setTopGlowOffset((int) listTopOffset);
-            listView.setOverScrollMode(listTopOffset > OPENED_LIST_TOP_OFFSET && listTopOffset < listView.getMeasuredWidth() - newTop ? View.OVER_SCROLL_NEVER : View.OVER_SCROLL_ALWAYS);
+            listView.setOverScrollMode(listTopOffset > OPENED_LIST_TOP_OFFSET && listTopOffset < getExpandedListViewOffset() - newTop ? View.OVER_SCROLL_NEVER : View.OVER_SCROLL_ALWAYS);
 
             float initialAvatarY = getActionBarY() + AndroidUtilities.dp(7f);
 
             final float durationFactor = Math.min(dpf2(2000f), Math.max(dpf2(1100f), Math.abs(listViewVelocityY))) / dpf2(1100f);
 
             float h = openAnimationInProgress ? initialAnimationListTopOffset : listTopOffset;
-            expandProgress = (h - OPENED_LIST_TOP_OFFSET) / (listView.getMeasuredWidth() - newTop - OPENED_LIST_TOP_OFFSET);
+            expandProgress = (h - OPENED_LIST_TOP_OFFSET) / (getExpandedListViewOffset() - newTop - OPENED_LIST_TOP_OFFSET);
             if (h > OPENED_LIST_TOP_OFFSET || isPulledDown) {
                 collapseProgress = 0;
                 updateAvatarRect();
@@ -7622,6 +7611,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private float getActionBarY() {
         return (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + actionBar.getTranslationY();
+    }
+
+    private int getExpandedListViewOffset() {
+        return listView.getMeasuredWidth() + dp(64);
     }
 
     public RecyclerListView getListView() {
