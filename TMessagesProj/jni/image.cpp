@@ -445,241 +445,13 @@ static void fastBlur565(int32_t w, int32_t h, int32_t stride, uint8_t *pix, int3
     delete[] rgb;
 }
 
-JNIEXPORT int Java_org_telegram_messenger_Utilities_needInvert(JNIEnv *env, jclass clazz, jobject bitmap, jint unpin, jint width, jint height, jint stride) {
-    if (!bitmap) {
-        return 0;
-    }
-
-    if (!width || !height || !stride || stride != width * 4 || width * height > 150 * 150) {
-        return 0;
-    }
-
-    void *pixels = nullptr;
-    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) {
-        return 0;
-    }
-    if (pixels == nullptr) {
-        return 0;
-    }
-    uint8_t *pix = (uint8_t *) pixels;
-
-    int32_t hasAlpha = 0;
-    float matching = 0;
-    float total = 0;
-    for (int32_t y = 0; y < height; y++) {
-        for (int32_t x = 0; x < width; x++) {
-            int32_t index = y * stride + x * 4;
-            uint8_t a = pix[index + 3];
-            float alpha = a / 255.0f;
-
-            uint8_t r = (uint8_t)(pix[index] * alpha);
-            uint8_t g = (uint8_t)(pix[index + 1] * alpha);
-            uint8_t b = (uint8_t)(pix[index + 2] * alpha);
-
-            uint8_t cmax = (r > g) ? r : g;
-            if (b > cmax) {
-                cmax = b;
-            }
-            uint8_t cmin = (r < g) ? r : g;
-            if (b < cmin) {
-                cmin = b;
-            }
-
-            float saturation;
-            float brightness = ((float) cmax) / 255.0f;
-            if (cmax != 0) {
-                saturation = ((float) (cmax - cmin)) / ((float) cmax);
-            } else {
-                saturation = 0;
-            }
-
-            if (alpha < 1.0) {
-                hasAlpha = 1;
-            }
-
-            if (alpha > 0.0) {
-                total += 1;
-                if (saturation < 0.1f && brightness < 0.25f) {
-                    matching += 1;
-                }
-            }
-        }
-    }
-    if (unpin) {
-        AndroidBitmap_unlockPixels(env, bitmap);
-    }
-    return hasAlpha && matching / total > 0.85;
-}
-
-JNIEXPORT void Java_org_telegram_messenger_Utilities_blurBitmap(JNIEnv *env, jclass clazz, jobject bitmap, jint radius, jint unpin, jint width, jint height, jint stride) {
-    if (!bitmap) {
-        return;
-    }
-
-    if (!width || !height || !stride) {
-        return;
-    }
-
-    void *pixels = nullptr;
-    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) {
-        return;
-    }
-    if (stride == width * 2) {
-        if (radius <= 3) {
-            fastBlur565(width, height, stride, (uint8_t *) pixels, radius);
-        } else {
-            fastBlurMore565(width, height, stride, (uint8_t *) pixels, radius);
-        }
-    } else {
-        if (radius <= 3) {
-            fastBlur(width, height, stride, (uint8_t *) pixels, radius);
-        } else {
-            fastBlurMore(width, height, stride, (uint8_t *) pixels, radius);
-        }
-    }
-    if (unpin) {
-        AndroidBitmap_unlockPixels(env, bitmap);
-    }
-}
-
-const uint32_t PGPhotoEnhanceHistogramBins = 256;
-const uint32_t PGPhotoEnhanceSegments = 4;
-
-JNIEXPORT void Java_org_telegram_messenger_Utilities_calcCDT(JNIEnv *env, jclass clazz, jobject hsvBuffer, jint width, jint height, jobject buffer, jobject calcBuffer) {
-    float imageWidth = width;
-    float imageHeight = height;
-    float _clipLimit = 1.25f;
-
-    uint32_t totalSegments = PGPhotoEnhanceSegments * PGPhotoEnhanceSegments;
-    uint32_t tileArea = (uint32_t) (floorf(imageWidth / PGPhotoEnhanceSegments) * floorf(imageHeight / PGPhotoEnhanceSegments));
-    uint32_t clipLimit = (uint32_t) MAX(1, _clipLimit * tileArea / (float) PGPhotoEnhanceHistogramBins);
-    float scale = 255.0f / (float) tileArea;
-
-    unsigned char *bytes = (unsigned char *) env->GetDirectBufferAddress(hsvBuffer);
-    uint32_t *calcBytes = (uint32_t *) env->GetDirectBufferAddress(calcBuffer);
-    unsigned char *result = (unsigned char *) env->GetDirectBufferAddress(buffer);
-
-    uint32_t *cdfsMin = calcBytes;
-    calcBytes += totalSegments;
-    uint32_t *cdfsMax = calcBytes;
-    calcBytes += totalSegments;
-    uint32_t *cdfs = calcBytes;
-    calcBytes += totalSegments * PGPhotoEnhanceHistogramBins;
-    uint32_t *hist = calcBytes;
-    memset(hist, 0, sizeof(uint32_t) * totalSegments * PGPhotoEnhanceHistogramBins);
-
-    float xMul = PGPhotoEnhanceSegments / imageWidth;
-    float yMul = PGPhotoEnhanceSegments / imageHeight;
-
-    uint32_t i, j;
-
-    for (i = 0; i < imageHeight; i++) {
-        uint32_t yOffset = i * width * 4;
-        for (j = 0; j < imageWidth; j++) {
-            uint32_t index = j * 4 + yOffset;
-
-            uint32_t tx = (uint32_t)(j * xMul);
-            uint32_t ty = (uint32_t)(i * yMul);
-            uint32_t t = ty * PGPhotoEnhanceSegments + tx;
-
-            hist[t * PGPhotoEnhanceHistogramBins + bytes[index + 2]]++;
-        }
-    }
-
-    for (i = 0; i < totalSegments; i++) {
-        if (clipLimit > 0) {
-            uint32_t clipped = 0;
-            for (j = 0; j < PGPhotoEnhanceHistogramBins; j++) {
-                if (hist[i * PGPhotoEnhanceHistogramBins + j] > clipLimit) {
-                    clipped += hist[i * PGPhotoEnhanceHistogramBins + j] - clipLimit;
-                    hist[i * PGPhotoEnhanceHistogramBins + j] = clipLimit;
-                }
-            }
-
-            uint32_t redistBatch = clipped / PGPhotoEnhanceHistogramBins;
-            uint32_t residual = clipped - redistBatch * PGPhotoEnhanceHistogramBins;
-
-            for (j = 0; j < PGPhotoEnhanceHistogramBins; j++) {
-                hist[i * PGPhotoEnhanceHistogramBins + j] += redistBatch;
-                if (j < residual) {
-                    hist[i * PGPhotoEnhanceHistogramBins + j]++;
-                }
-            }
-        }
-        memcpy(cdfs + i * PGPhotoEnhanceHistogramBins, hist + i * PGPhotoEnhanceHistogramBins, PGPhotoEnhanceHistogramBins * sizeof(uint32_t));
-
-        uint32_t hMin = PGPhotoEnhanceHistogramBins - 1;
-        for (j = 0; j < hMin; ++j) {
-            if (cdfs[i * PGPhotoEnhanceHistogramBins + j] != 0) {
-                hMin = j;
-            }
-        }
-
-        uint32_t cdf = 0;
-        for (j = hMin; j < PGPhotoEnhanceHistogramBins; j++) {
-            cdf += cdfs[i * PGPhotoEnhanceHistogramBins + j];
-            cdfs[i * PGPhotoEnhanceHistogramBins + j] = (uint8_t) MIN(255, cdf * scale);
-        }
-
-        cdfsMin[i] = cdfs[i * PGPhotoEnhanceHistogramBins + hMin];
-        cdfsMax[i] = cdfs[i * PGPhotoEnhanceHistogramBins + PGPhotoEnhanceHistogramBins - 1];
-    }
-
-    for (j = 0; j < totalSegments; j++) {
-        uint32_t yOffset = j * PGPhotoEnhanceHistogramBins * 4;
-        for (i = 0; i < PGPhotoEnhanceHistogramBins; i++) {
-            uint32_t index = i * 4 + yOffset;
-            result[index] = (uint8_t) cdfs[j * PGPhotoEnhanceHistogramBins + i];
-            result[index + 1] = (uint8_t) cdfsMin[j];
-            result[index + 2] = (uint8_t) cdfsMax[j];
-            result[index + 3] = 255;
-        }
-    }
-}
-
-JNIEXPORT jint Java_org_telegram_messenger_Utilities_pinBitmap(JNIEnv *env, jclass clazz, jobject bitmap) {
-    if (bitmap == nullptr) {
-        return 0;
-    }
-    void *pixels;
-    return AndroidBitmap_lockPixels(env, bitmap, &pixels) >= 0 ? 1 : 0;
-}
-
-JNIEXPORT void Java_org_telegram_messenger_Utilities_unpinBitmap(JNIEnv *env, jclass clazz, jobject bitmap) {
-    if (bitmap == nullptr) {
-        return;
-    }
-    AndroidBitmap_unlockPixels(env, bitmap);
-}
-
 #define SQUARE(i) ((i)*(i))
 
 inline static void zeroClearInt(int *p, size_t count) {
     memset(p, 0, sizeof(int) * count);
 }
 
-JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv *env, jclass clazz, jobject bitmap, jint radius) {
-    if (radius < 1) {
-        return;
-    }
-
-    AndroidBitmapInfo info;
-    if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) {
-        return;
-    }
-    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
-        return;
-    }
-
-    int w = info.width;
-    int h = info.height;
-    int stride = info.stride;
-
-    unsigned char *pixels = nullptr;
-    AndroidBitmap_lockPixels(env, bitmap, (void **) &pixels);
-    if (!pixels) {
-        return;
-    }
+static void stackBlurBitmap(uint32_t w, int32_t h, uint32_t stride, uint8_t *pixels, int32_t radius) {
     // Constants
     //const int radius = (int)inradius; // Transform unsigned into signed for further operations
     const int wm = w - 1;
@@ -908,6 +680,240 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv *env
     delete[] b;
     delete[] a;
     delete[] dv;
+}
+
+JNIEXPORT int Java_org_telegram_messenger_Utilities_needInvert(JNIEnv *env, jclass clazz, jobject bitmap, jint unpin, jint width, jint height, jint stride) {
+    if (!bitmap) {
+        return 0;
+    }
+
+    if (!width || !height || !stride || stride != width * 4 || width * height > 150 * 150) {
+        return 0;
+    }
+
+    void *pixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) {
+        return 0;
+    }
+    if (pixels == nullptr) {
+        return 0;
+    }
+    uint8_t *pix = (uint8_t *) pixels;
+
+    int32_t hasAlpha = 0;
+    float matching = 0;
+    float total = 0;
+    for (int32_t y = 0; y < height; y++) {
+        for (int32_t x = 0; x < width; x++) {
+            int32_t index = y * stride + x * 4;
+            uint8_t a = pix[index + 3];
+            float alpha = a / 255.0f;
+
+            uint8_t r = (uint8_t)(pix[index] * alpha);
+            uint8_t g = (uint8_t)(pix[index + 1] * alpha);
+            uint8_t b = (uint8_t)(pix[index + 2] * alpha);
+
+            uint8_t cmax = (r > g) ? r : g;
+            if (b > cmax) {
+                cmax = b;
+            }
+            uint8_t cmin = (r < g) ? r : g;
+            if (b < cmin) {
+                cmin = b;
+            }
+
+            float saturation;
+            float brightness = ((float) cmax) / 255.0f;
+            if (cmax != 0) {
+                saturation = ((float) (cmax - cmin)) / ((float) cmax);
+            } else {
+                saturation = 0;
+            }
+
+            if (alpha < 1.0) {
+                hasAlpha = 1;
+            }
+
+            if (alpha > 0.0) {
+                total += 1;
+                if (saturation < 0.1f && brightness < 0.25f) {
+                    matching += 1;
+                }
+            }
+        }
+    }
+    if (unpin) {
+        AndroidBitmap_unlockPixels(env, bitmap);
+    }
+    return hasAlpha && matching / total > 0.85;
+}
+
+JNIEXPORT void Java_org_telegram_messenger_Utilities_blurBitmap(JNIEnv *env, jclass clazz, jobject bitmap, jint radius, jint unpin, jint width, jint height, jint stride) {
+    if (!bitmap) {
+        return;
+    }
+
+    if (!width || !height || !stride) {
+        return;
+    }
+
+    void *pixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) {
+        return;
+    }
+    if (stride == width * 2) {
+        if (radius <= 3) {
+            fastBlur565(width, height, stride, (uint8_t *) pixels, radius);
+        } else {
+            fastBlurMore565(width, height, stride, (uint8_t *) pixels, radius);
+        }
+    } else {
+        if (radius <= 3) {
+            fastBlur(width, height, stride, (uint8_t *) pixels, radius);
+        } else {
+            fastBlurMore(width, height, stride, (uint8_t *) pixels, radius);
+        }
+    }
+    if (unpin) {
+        AndroidBitmap_unlockPixels(env, bitmap);
+    }
+}
+
+const uint32_t PGPhotoEnhanceHistogramBins = 256;
+const uint32_t PGPhotoEnhanceSegments = 4;
+
+JNIEXPORT void Java_org_telegram_messenger_Utilities_calcCDT(JNIEnv *env, jclass clazz, jobject hsvBuffer, jint width, jint height, jobject buffer, jobject calcBuffer) {
+    float imageWidth = width;
+    float imageHeight = height;
+    float _clipLimit = 1.25f;
+
+    uint32_t totalSegments = PGPhotoEnhanceSegments * PGPhotoEnhanceSegments;
+    uint32_t tileArea = (uint32_t) (floorf(imageWidth / PGPhotoEnhanceSegments) * floorf(imageHeight / PGPhotoEnhanceSegments));
+    uint32_t clipLimit = (uint32_t) MAX(1, _clipLimit * tileArea / (float) PGPhotoEnhanceHistogramBins);
+    float scale = 255.0f / (float) tileArea;
+
+    unsigned char *bytes = (unsigned char *) env->GetDirectBufferAddress(hsvBuffer);
+    uint32_t *calcBytes = (uint32_t *) env->GetDirectBufferAddress(calcBuffer);
+    unsigned char *result = (unsigned char *) env->GetDirectBufferAddress(buffer);
+
+    uint32_t *cdfsMin = calcBytes;
+    calcBytes += totalSegments;
+    uint32_t *cdfsMax = calcBytes;
+    calcBytes += totalSegments;
+    uint32_t *cdfs = calcBytes;
+    calcBytes += totalSegments * PGPhotoEnhanceHistogramBins;
+    uint32_t *hist = calcBytes;
+    memset(hist, 0, sizeof(uint32_t) * totalSegments * PGPhotoEnhanceHistogramBins);
+
+    float xMul = PGPhotoEnhanceSegments / imageWidth;
+    float yMul = PGPhotoEnhanceSegments / imageHeight;
+
+    uint32_t i, j;
+
+    for (i = 0; i < imageHeight; i++) {
+        uint32_t yOffset = i * width * 4;
+        for (j = 0; j < imageWidth; j++) {
+            uint32_t index = j * 4 + yOffset;
+
+            uint32_t tx = (uint32_t)(j * xMul);
+            uint32_t ty = (uint32_t)(i * yMul);
+            uint32_t t = ty * PGPhotoEnhanceSegments + tx;
+
+            hist[t * PGPhotoEnhanceHistogramBins + bytes[index + 2]]++;
+        }
+    }
+
+    for (i = 0; i < totalSegments; i++) {
+        if (clipLimit > 0) {
+            uint32_t clipped = 0;
+            for (j = 0; j < PGPhotoEnhanceHistogramBins; j++) {
+                if (hist[i * PGPhotoEnhanceHistogramBins + j] > clipLimit) {
+                    clipped += hist[i * PGPhotoEnhanceHistogramBins + j] - clipLimit;
+                    hist[i * PGPhotoEnhanceHistogramBins + j] = clipLimit;
+                }
+            }
+
+            uint32_t redistBatch = clipped / PGPhotoEnhanceHistogramBins;
+            uint32_t residual = clipped - redistBatch * PGPhotoEnhanceHistogramBins;
+
+            for (j = 0; j < PGPhotoEnhanceHistogramBins; j++) {
+                hist[i * PGPhotoEnhanceHistogramBins + j] += redistBatch;
+                if (j < residual) {
+                    hist[i * PGPhotoEnhanceHistogramBins + j]++;
+                }
+            }
+        }
+        memcpy(cdfs + i * PGPhotoEnhanceHistogramBins, hist + i * PGPhotoEnhanceHistogramBins, PGPhotoEnhanceHistogramBins * sizeof(uint32_t));
+
+        uint32_t hMin = PGPhotoEnhanceHistogramBins - 1;
+        for (j = 0; j < hMin; ++j) {
+            if (cdfs[i * PGPhotoEnhanceHistogramBins + j] != 0) {
+                hMin = j;
+            }
+        }
+
+        uint32_t cdf = 0;
+        for (j = hMin; j < PGPhotoEnhanceHistogramBins; j++) {
+            cdf += cdfs[i * PGPhotoEnhanceHistogramBins + j];
+            cdfs[i * PGPhotoEnhanceHistogramBins + j] = (uint8_t) MIN(255, cdf * scale);
+        }
+
+        cdfsMin[i] = cdfs[i * PGPhotoEnhanceHistogramBins + hMin];
+        cdfsMax[i] = cdfs[i * PGPhotoEnhanceHistogramBins + PGPhotoEnhanceHistogramBins - 1];
+    }
+
+    for (j = 0; j < totalSegments; j++) {
+        uint32_t yOffset = j * PGPhotoEnhanceHistogramBins * 4;
+        for (i = 0; i < PGPhotoEnhanceHistogramBins; i++) {
+            uint32_t index = i * 4 + yOffset;
+            result[index] = (uint8_t) cdfs[j * PGPhotoEnhanceHistogramBins + i];
+            result[index + 1] = (uint8_t) cdfsMin[j];
+            result[index + 2] = (uint8_t) cdfsMax[j];
+            result[index + 3] = 255;
+        }
+    }
+}
+
+JNIEXPORT jint Java_org_telegram_messenger_Utilities_pinBitmap(JNIEnv *env, jclass clazz, jobject bitmap) {
+    if (bitmap == nullptr) {
+        return 0;
+    }
+    void *pixels;
+    return AndroidBitmap_lockPixels(env, bitmap, &pixels) >= 0 ? 1 : 0;
+}
+
+JNIEXPORT void Java_org_telegram_messenger_Utilities_unpinBitmap(JNIEnv *env, jclass clazz, jobject bitmap) {
+    if (bitmap == nullptr) {
+        return;
+    }
+    AndroidBitmap_unlockPixels(env, bitmap);
+}
+
+JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv *env, jclass clazz, jobject bitmap, jint radius) {
+    if (radius < 1) {
+        return;
+    }
+
+    AndroidBitmapInfo info;
+    if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        return;
+    }
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
+        return;
+    }
+
+    int w = info.width;
+    int h = info.height;
+    int stride = info.stride;
+
+    unsigned char *pixels = nullptr;
+    AndroidBitmap_lockPixels(env, bitmap, (void **) &pixels);
+    if (!pixels) {
+        return;
+    }
+
+    stackBlurBitmap(w, h, stride, pixels, radius);
+
     AndroidBitmap_unlockPixels(env, bitmap);
 }
 
@@ -1249,6 +1255,97 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_generateGradient(JNIEnv *en
     if (unpin) {
         AndroidBitmap_unlockPixels(env, bitmap);
     }
+}
+
+inline static void blend8888Pixels(uint8_t* top, int32_t topOffset, uint8_t* bottom, int32_t bottomOffset) {
+    uint8_t rA = top[topOffset];
+    uint8_t gA = top[topOffset + 1];
+    uint8_t bA = top[topOffset + 2];
+    uint8_t aA = top[topOffset + 3];
+
+    uint8_t rB = bottom[bottomOffset];
+    uint8_t gB = bottom[bottomOffset + 1];
+    uint8_t bB = bottom[bottomOffset + 2];
+    uint8_t aB = bottom[bottomOffset + 3];
+
+    bottom[bottomOffset ] = (rA * aA + rB * (255 - aA)) / 255;
+    bottom[bottomOffset + 1] = (gA * aA + gB * (255 - aA)) / 255;
+    bottom[bottomOffset + 2] = (bA * aA + bB * (255 - aA)) / 255;
+    bottom[bottomOffset + 3] = std::max(aA, aB);
+}
+
+JNIEXPORT void Java_org_telegram_messenger_Utilities_addBottomBlurredMirror(JNIEnv *env, jclass clazz, jobject bitmap, jint srcHeight, jint bottomMirrorHeight, jint blurRadius, jint gradientRadius) {
+    if (!bitmap) {
+        return;
+    }
+
+    AndroidBitmapInfo info;
+    if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        return;
+    }
+
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
+        return;
+    }
+
+    uint32_t width = info.width;
+    uint32_t stride = info.stride;
+
+    if (info.height != srcHeight + bottomMirrorHeight) {
+        return;
+    }
+
+    uint8_t *pixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, bitmap, (void **) &pixels) < 0) {
+        return;
+    }
+
+    if (bottomMirrorHeight + gradientRadius >= srcHeight || gradientRadius > bottomMirrorHeight || stride <= width * 2) {
+        return;
+    }
+
+    // Getting last bottomMirrorHeight lines of pixels to blur
+    auto* pixelsToBlur = new uint8_t[(bottomMirrorHeight) * stride];
+    memcpy(pixelsToBlur, pixels + (srcHeight - bottomMirrorHeight) * stride, bottomMirrorHeight * stride);
+
+    // Flipping lines for mirroring
+    auto* tmp = new uint8_t [stride];
+    for (int i = 0; i < bottomMirrorHeight / 2; i++) {
+        uint8_t* topRow = pixelsToBlur + stride * i;
+        uint8_t* bottomRow = pixelsToBlur + (bottomMirrorHeight - 1 - i) * stride;
+
+        memcpy(tmp, topRow, stride);
+        memcpy(topRow, bottomRow, stride);
+        memcpy(bottomRow, tmp,stride);
+    }
+    delete[] tmp;
+
+    // Blurring mirrored area
+    stackBlurBitmap(width, srcHeight, stride, pixelsToBlur, blurRadius);
+
+    // Alpha for gradient
+    for (int i = 0; i < gradientRadius; i++) {
+        float alpha = static_cast<float>(i) / static_cast<float>(gradientRadius);
+
+        for (int j = 0; j < stride; j++) {
+            int offset = i * stride + j * 4 + 3;
+            pixelsToBlur[offset] = static_cast<uint8_t>(alpha * 255.0f);
+        }
+    }
+
+    for (int i = 0; i < gradientRadius; i++) {
+        int rowY = srcHeight - gradientRadius + i;
+        for (int j = 0; j < width; j++) {
+            int offset = i * stride + j * 4;
+            int baseOffset = rowY * stride + j * 4;
+            blend8888Pixels(pixelsToBlur, offset, pixels, baseOffset);
+        }
+    }
+
+    memcpy(pixels + srcHeight * stride, pixelsToBlur + gradientRadius * stride, (bottomMirrorHeight - gradientRadius) * stride);
+
+    delete[] pixelsToBlur;
+    AndroidBitmap_unlockPixels(env, bitmap);
 }
 
 }

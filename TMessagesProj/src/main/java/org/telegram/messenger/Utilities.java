@@ -87,6 +87,17 @@ public class Utilities {
 //    public static native int saveProgressiveJpeg(Bitmap bitmap, int width, int height, int stride, int quality, String path);
     public static native void generateGradient(Bitmap bitmap, boolean unpin, int phase, float progress, int width, int height, int stride, int[] colors);
     public static native void setupNativeCrashesListener(String path);
+    public static native void addBottomBlurredMirror(Bitmap bitmap, int originHeight, int bottomMirrorHeight, int blurRadius, int gradientRadius);
+
+    public static Bitmap addBottomMirror(Bitmap src, int mirrorHeight, int blurRadius, int gradientRadius) {
+        Bitmap result = Bitmap.createBitmap(src.getWidth(), src.getHeight() + mirrorHeight, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(result);
+        canvas.drawBitmap(src, 0, 0, null);
+
+        addBottomBlurredMirror(result, src.getHeight(), mirrorHeight, blurRadius, gradientRadius);
+
+        return result;
+    }
 
     public static Bitmap stackBlurBitmapMax(Bitmap bitmap) {
         return stackBlurBitmapMax(bitmap, false);
