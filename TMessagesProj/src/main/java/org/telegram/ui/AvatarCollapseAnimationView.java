@@ -464,6 +464,10 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         private void release() {
             isRunning = false;
 
+            if (isPrepared) {
+                recycle();
+            }
+
             if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
                 GLES20.glDisableVertexAttribArray(aTexCordsLoc);
                 GLES20.glDisableVertexAttribArray(aPositionLoc);
