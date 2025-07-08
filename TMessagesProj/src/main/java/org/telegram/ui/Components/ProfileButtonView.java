@@ -25,6 +25,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.Theme;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
+import static org.telegram.messenger.AndroidUtilities.lerp;
 
 @SuppressLint("ViewConstructor")
 public class ProfileButtonView extends View {
@@ -37,6 +38,8 @@ public class ProfileButtonView extends View {
     private final Paint textPaint;
     private final Drawable drawable;
     private final String buttonText;
+
+    private float scale = 1f;
 
     private float cornerRadius;
 
@@ -61,16 +64,23 @@ public class ProfileButtonView extends View {
         textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setColor(Theme.getColor(Theme.key_profile_title, resourcesProvider));
         textPaint.setTypeface(AndroidUtilities.bold());
-        textPaint.setTextSize(dp(10));
         textPaint.setTextAlign(Paint.Align.CENTER);
 
         drawable = ContextCompat.getDrawable(context, iconRes);
         if (drawable != null) {
-            drawable.setBounds(0, 0, dp(30), dp(30));
             drawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_profile_actionIcon, resourcesProvider), PorterDuff.Mode.SRC_IN));
         }
 
+        setScale(1f);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
+    }
+
+    public void setScale(float scale) {
+        this.scale = scale;
+
+        textPaint.setTextSize(lerp(dp(10), dp(6), 1 - scale));
+        float iconSize = dp(62) * scale - 2 * dp(8) - textPaint.getTextSize() - dp(8);
+        drawable.setBounds(0, 0, (int) (iconSize), (int) (iconSize));
     }
 
     public void setCornerRadius(float radius) {
@@ -120,7 +130,7 @@ public class ProfileButtonView extends View {
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), dp(62));
+        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (int) (dp(62) * scale));
     }
 
     @Override
@@ -136,12 +146,12 @@ public class ProfileButtonView extends View {
 
         // Drawing icon
         canvas.save();
-        canvas.translate(getWidth() / 2f - dp( 15), dp(8));
+        canvas.translate(getWidth() / 2f - drawable.getBounds().width() / 2f, dp(8));
         drawable.draw(canvas);
         canvas.restore();
 
         // Drawing text
-        canvas.drawText(buttonText, getWidth() / 2f, dp(54), textPaint);
+        canvas.drawText(buttonText, getWidth() / 2f, getHeight() - dp(8) - textPaint.descent(), textPaint);
 
         canvas.restore();
     }

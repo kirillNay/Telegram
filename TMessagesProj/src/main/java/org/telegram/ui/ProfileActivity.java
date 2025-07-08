@@ -249,6 +249,7 @@ import org.telegram.ui.Components.Premium.PremiumGradient;
 import org.telegram.ui.Components.Premium.PremiumPreviewBottomSheet;
 import org.telegram.ui.Components.Premium.ProfilePremiumCell;
 import org.telegram.ui.Components.Premium.boosts.UserSelectorBottomSheet;
+import org.telegram.ui.Components.ProfileButtonView;
 import org.telegram.ui.Components.ProfileGalleryView;
 import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.RadialProgressView;
@@ -410,6 +411,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private ActionBarMenuSubItem setUsernameItem;
     private ActionBarMenuSubItem autoDeleteItem;
 
+    private ProfileButtonLayout profileButtonsLayout;
+
     private ImageView ttlIconView;
     AutoDeletePopupWrapper autoDeletePopupWrapper;
     protected float headerShadowAlpha = 1.0f;
@@ -551,7 +554,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private final static int set_username = 43;
     private final static int bot_privacy = 44;
 
-    private final static float OPENED_LIST_TOP_OFFSET = dp(162f);
+    private final static float OPENED_LIST_TOP_OFFSET = dp(205f);
     public final static float INITIAL_AVATAR_CONTAINER_SIZE_PX = dp(42f);
     public final static float DEFAULT_AVATAR_SCALE = (42f + 46f) / 42f;
     public final static float MIN_AVATAR_SCALE = 0.8f;
@@ -796,6 +799,83 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     public long getTopicId() {
         return topicId;
+    }
+
+    @SuppressLint("ViewConstructor")
+    public static class ProfileButtonLayout extends ViewGroup {
+
+        private final Theme.ResourcesProvider resourcesProvider;
+
+        private final View background;
+
+        private float scale = 1f;
+
+        public ProfileButtonLayout(Context context, View background, Theme.ResourcesProvider resourcesProvider) {
+            super(context);
+            this.resourcesProvider = resourcesProvider;
+            this.background = background;
+        }
+
+        public ProfileButtonLayout addButton(String text, int iconRes, Runnable listener) {
+            ProfileButtonView buttonView = new ProfileButtonView(getContext(), background, resourcesProvider, iconRes, text, dp(8));
+            addView(buttonView);
+
+            return this;
+        }
+
+        public void setScale(float scale) {
+            if (this.scale == scale) return;
+
+            this.scale = scale;
+            for (int i = 0; i < getChildCount(); i++) {
+                View child = getChildAt(i);
+                if (child instanceof ProfileButtonView) {
+                    ((ProfileButtonView) child).setScale(scale);
+                }
+            }
+
+            requestLayout();
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int width = MeasureSpec.getSize(widthMeasureSpec);
+            int height = (int) (dp(62) * scale);
+            int childCount = getChildCount();
+
+            if (childCount > 0) {
+                int totalSpacing = dp(8) * (childCount - 1);
+                int availableWidth = width - totalSpacing;
+                int childWidth = availableWidth / childCount;
+
+                int childWidthSpec = MeasureSpec.makeMeasureSpec(childWidth, MeasureSpec.EXACTLY);
+                int childHeightSpec = MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY);
+
+                for (int i = 0; i < childCount; i++) {
+                    View child = getChildAt(i);
+                    child.measure(childWidthSpec, childHeightSpec);
+                }
+            }
+
+            setMeasuredDimension(width, height);
+        }
+
+        @Override
+        protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            int left = 0;
+            int childCount = getChildCount();
+
+            for (int i = 0; i < childCount; i++) {
+                View child = getChildAt(i);
+                int childWidth = child.getMeasuredWidth();
+                int childHeight = child.getMeasuredHeight();
+
+                int top = (getMeasuredHeight() - childHeight) / 2;
+                child.layout(left, top, left + childWidth, top + childHeight);
+
+                left += childWidth + dp(8);
+            }
+        }
     }
 
     public static class AvatarImageView extends BackupImageView {
@@ -4925,9 +5005,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         fallbackImage = new ImageReceiver(avatarContainer2);
         fallbackImage.setRoundRadius(AndroidUtilities.dp(11));
         AndroidUtilities.updateViewVisibilityAnimated(avatarContainer2, true, 1f, false);
-        frameLayout.addView(avatarContainer2, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.START, 0, 0, 0, 0));
+        frameLayout.addView(avatarContainer2, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.START));
 
-        avatarContainer2.addView(avatarContainer, LayoutHelper.createFrame(42, 42, Gravity.TOP | Gravity.LEFT, 0, 0, 0, 0));
+        avatarContainer2.addView(avatarContainer, LayoutHelper.createFrame(42, 42, Gravity.TOP | Gravity.LEFT));
         avatarImage = new AvatarImageView(context) {
             @Override
             public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
@@ -5391,6 +5471,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         createBirthdayEffect();
         createFloatingActionButton(getContext());
+        createProfileButtons();
 
         if (myProfile) {
             contentView.addView(bottomButtonsContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 72 + (1 / AndroidUtilities.density), Gravity.BOTTOM | Gravity.FILL_HORIZONTAL));
@@ -5535,6 +5616,16 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         floatingHidden = true;
         floatingButtonHideProgress = 1.0f;
         updateFloatingButtonOffset();
+    }
+
+    private void createProfileButtons() {
+        profileButtonsLayout = new ProfileButtonLayout(getContext(), avatarContainer2, resourcesProvider)
+                .addButton("Message", R.drawable.profile_button_message, () -> {})
+                .addButton("Mute", R.drawable.profile_button_mute, () -> {})
+                .addButton("Call", R.drawable.profile_button_call, () -> {})
+                .addButton("Video", R.drawable.profile_button_video, () -> {});
+
+        ((FrameLayout) fragmentView).addView(profileButtonsLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.START, 14, 0, 14, 0));
     }
 
     private void collapseAvatarInstant() {
@@ -7210,6 +7301,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 collapseAnimationView.setCollapseProgress(collapseProgress, false);
                 collapseAnimationView.setAvatarContainerRect(avatarContainerRect);
 
+                if (profileButtonsLayout != null) {
+                    profileButtonsLayout.setTranslationY(getTopViewBottom() - dp(76));
+                }
+
                 if (storyView != null) {
                     storyView.invalidate();
                 }
@@ -7360,11 +7455,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             } else if (listTopOffset <= OPENED_LIST_TOP_OFFSET) {
                 needSettleDownScrolling = true;
 
-                if (collapseProgress >= 0.15 && !openAnimationInProgress) {
+                if (collapseProgress >= 0.2 && !openAnimationInProgress) {
                     isCollapsed = true;
-                } else if (collapseProgress < 0.15 && !openAnimationInProgress) {
+                } else if (collapseProgress < 0.2 && !openAnimationInProgress) {
                     isCollapsed = false;
                 }
+
+                if (profileButtonsLayout != null) {
+                    float hideProgress = Utilities.clamp(listTopOffset / dp(76), 1f, 0f);
+                    profileButtonsLayout.setScale(hideProgress);
+                    profileButtonsLayout.setAlpha(lerp(1f, 0f, (1 - hideProgress) * 1.5f));
+
+                    if (listTopOffset >= dp(76f)) {
+                        profileButtonsLayout.setTranslationY(getTopViewBottom() - dp(76f));
+                    }
+                }
+
                 if (storyView != null) {
                     storyView.invalidate();
                 }
@@ -7601,13 +7707,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
-    private float getNameAndOnlineBottom() {
+    private float getTopViewBottom() {
         View view = layoutManager.findViewByPosition(0);
         if (view != null) {
-            return listView.getY() + view.getTop() - dp(52f); // TODO add buttons height
+            return listView.getY() + view.getTop();
         }
 
         return listTopOffset;
+    }
+
+    private float getNameAndOnlineBottom() {
+        return getTopViewBottom() - dp(100);
     }
 
     private float getActionBarY() {
@@ -8550,6 +8660,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     animators.add(ObjectAnimator.ofFloat(avatarImage, AvatarImageView.CROSSFADE_PROGRESS, 0.0f));
                 }
 
+                if (profileButtonsLayout != null) {
+                    profileButtonsLayout.setAlpha(0f);
+                    animators.add(ObjectAnimator.ofFloat(profileButtonsLayout, View.ALPHA, 1.0f));
+                }
+
                 boolean onlineTextCrosafade = false;
 
                 if (previousTransitionFragment != null) {
@@ -8619,6 +8734,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
                 if (avatarImage != null) {
                     animators.add(ObjectAnimator.ofFloat(avatarImage, AvatarImageView.CROSSFADE_PROGRESS, 1.0f));
+                }
+                if (profileButtonsLayout != null) {
+                    animators.add(ObjectAnimator.ofFloat(profileButtonsLayout, View.ALPHA, 0.0f));
                 }
 
                 boolean crossfadeOnlineText = false;
