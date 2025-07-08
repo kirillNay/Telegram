@@ -123,6 +123,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
+import org.telegram.DebugUtils;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -818,6 +819,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         public ProfileButtonLayout addButton(String text, int iconRes, Runnable listener) {
             ProfileButtonView buttonView = new ProfileButtonView(getContext(), background, resourcesProvider, iconRes, text, dp(8));
+            buttonView.setClickListener(listener);
             addView(buttonView);
 
             return this;
@@ -5620,10 +5622,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private void createProfileButtons() {
         profileButtonsLayout = new ProfileButtonLayout(getContext(), avatarContainer2, resourcesProvider)
-                .addButton("Message", R.drawable.profile_button_message, () -> {})
-                .addButton("Mute", R.drawable.profile_button_mute, () -> {})
-                .addButton("Call", R.drawable.profile_button_call, () -> {})
-                .addButton("Video", R.drawable.profile_button_video, () -> {});
+                .addButton("Message", R.drawable.profile_button_message, () -> {
+                    DebugUtils.log("Do Message");
+                })
+                .addButton("Mute", R.drawable.profile_button_mute, () -> {
+                    DebugUtils.log("Do Mute");
+                })
+                .addButton("Call", R.drawable.profile_button_call, () -> {
+                    DebugUtils.log("Do Call");
+                })
+                .addButton("Video", R.drawable.profile_button_video, () -> {
+                    DebugUtils.log("Do Video");
+                });
 
         ((FrameLayout) fragmentView).addView(profileButtonsLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.START, 14, 0, 14, 0));
     }

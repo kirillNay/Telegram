@@ -1,5 +1,6 @@
 package org.telegram.ui.Components;
 
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
@@ -16,6 +17,7 @@ import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.text.TextPaint;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import androidx.annotation.NonNull;
@@ -43,10 +45,15 @@ public class ProfileButtonView extends View {
 
     private float cornerRadius;
 
+    private Runnable onClickListener;
+
     private final ViewTreeObserver.OnDrawListener onDrawListener = this::invalidate;
 
     private final int[] backgroundSiblingLoc = new int[2];
     private final int[] viewLoc = new int[2];
+
+    private final ValueAnimator pressedAnimator;
+    private float pressedProgress = 0f;
 
     public ProfileButtonView(
             Context context,
@@ -73,6 +80,19 @@ public class ProfileButtonView extends View {
 
         setScale(1f);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
+
+        pressedAnimator = ValueAnimator.ofFloat(0f, 1f);
+        pressedAnimator.setInterpolator(CubicBezierInterpolator.DEFAULT);
+        pressedAnimator.addUpdateListener(animation -> {
+            pressedProgress = (float) animation.getAnimatedValue();
+            setScaleX(lerp(1f, 0.95f, pressedProgress));
+            setScaleY(lerp(1f, 0.95f, pressedProgress));
+            invalidate();
+        });
+    }
+
+    public void setClickListener(Runnable listener) {
+        this.onClickListener = listener;
     }
 
     public void setScale(float scale) {
@@ -102,6 +122,64 @@ public class ProfileButtonView extends View {
     protected void onDetachedFromWindow() {
         removeDrawListener();
         super.onDetachedFromWindow();
+    }
+
+    private boolean isPressed = false;
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (event.getAction() == MotionEvent.ACTION_DOWN && !isPressed) {
+            pressed(true);
+
+            return true;
+        }
+
+        boolean isX = event.getX() >= 0 && event.getX() <= getWidth();
+        boolean isY = event.getY() >= 0 && event.getY() <= getHeight();
+
+        if (event.getAction() == MotionEvent.ACTION_UP && isPressed) {
+            pressed(false);
+
+            if (isX && isY && onClickListener != null) {
+                onClickListener.run();
+                return true;
+            }
+
+            return false;
+        }
+
+        if (event.getAction() == MotionEvent.ACTION_MOVE) {
+            if ((!isX || !isY) && isPressed) {
+                pressed(false);
+            }
+
+            return true;
+        }
+
+        if (event.getAction() == MotionEvent.ACTION_CANCEL && isPressed) {
+            pressed(false);
+            return false;
+        }
+
+        return false;
+    }
+
+    private void pressed(boolean isPressed) {
+        this.isPressed = isPressed;
+
+        if (pressedAnimator.isRunning()) {
+            pressedAnimator.cancel();
+        }
+
+        if (isPressed) {
+            pressedAnimator.setDuration((long) (120L * (1f - pressedProgress)));
+            pressedAnimator.setFloatValues(pressedProgress, 1f);
+        } else {
+            pressedAnimator.setDuration((long) (120L * pressedProgress));
+            pressedAnimator.setFloatValues(pressedProgress, 0f);
+        }
+
+        pressedAnimator.start();
     }
 
     private void addDrawListener() {
@@ -142,7 +220,7 @@ public class ProfileButtonView extends View {
         if (canvas.isHardwareAccelerated() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             drawBackgroundBlur(canvas);
         }
-        canvas.drawColor(Color.argb(40, 0, 0, 0));
+        canvas.drawColor(Color.argb(40 + lerp(0, 20, pressedProgress), 0, 0, 0));
 
         // Drawing icon
         canvas.save();
