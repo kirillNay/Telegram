@@ -100,7 +100,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
 
         private volatile boolean invalid = true;
 
-        private boolean isAvatarAnimated = false;
+        private boolean isAvatarInvalid = false;
 
         // Callbacks
         private Runnable onRenderStopped;
@@ -119,10 +119,15 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             this.imageReceiver = imageReceiver;
         }
 
-        public void setCollapseProgress(float collapseProgress) {
+        public void setCollapseProgress(float collapseProgress, boolean resume) {
             if (this.collapseProgress == collapseProgress) return;
 
             this.collapseProgress = collapseProgress;
+            if (collapseProgress > 1) {
+                pauseRender();
+            } else if (resume && !isRunning && isPrepared) {
+                isRunning = true;
+            }
             invalid = true;
         }
 
@@ -169,7 +174,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
                 while(this.isPrepared && !isReleased) {
                     long start = System.currentTimeMillis();
                     if (isRunning) {
-                        if (isAvatarAnimated) {
+                        if (isAvatarInvalid) {
                             try {
                                 initImageTexture();
                             } catch (InternalRenderException e) {
@@ -209,6 +214,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
 
             if (!isReleased && !isPrepared) {
                 onRenderStarted = onStart;
+                isImageTexturePrepared = false;
                 prepareRenderer(true);
             } else {
                 onStart.run();
@@ -339,10 +345,10 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         }
 
         private void initImageTexture() throws InternalRenderException {
-            isAvatarAnimated = imageReceiver.getAnimation() != null;
+            isAvatarInvalid = imageReceiver.getAnimation() != null;
 
             Bitmap avatarBitmap;
-            if (isAvatarAnimated) {
+            if (isAvatarInvalid) {
                 imageReceiver.getAnimation().updateCurrentFrame(System.currentTimeMillis(), false);
                 avatarBitmap = imageReceiver.getAnimation().getAnimatedBitmap();
             } else {
@@ -521,11 +527,19 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         setOpaque(false);
     }
 
+    public void setCollapseProgress(float collapseProgress, boolean resume) {
+        this.collapseProgress = collapseProgress;
+
+        if (renderThread != null) {
+            renderThread.setCollapseProgress(collapseProgress, resume);
+        }
+    }
+
     public void setCollapseProgress(float collapseProgress) {
         this.collapseProgress = collapseProgress;
 
         if (renderThread != null) {
-            renderThread.setCollapseProgress(collapseProgress);
+            renderThread.setCollapseProgress(collapseProgress, false);
         }
     }
 
@@ -581,7 +595,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
     public void startRender(Runnable onStart) {
         if (renderThread != null && !renderThread.isRunning) {
             renderThread.startRender(onStart);
-            renderThread.setCollapseProgress(collapseProgress);
+            renderThread.setCollapseProgress(collapseProgress, true);
             renderThread.setAvatarContainerRect(avatarContainerRect);
         }
     }

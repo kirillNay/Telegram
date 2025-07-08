@@ -7207,7 +7207,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (h > OPENED_LIST_TOP_OFFSET || isPulledDown) {
                 collapseProgress = 0;
                 updateAvatarRect();
-                collapseAnimationView.setCollapseProgress(collapseProgress);
+                collapseAnimationView.setCollapseProgress(collapseProgress, false);
                 collapseAnimationView.setAvatarContainerRect(avatarContainerRect);
 
                 if (storyView != null) {
@@ -7371,6 +7371,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 float nameScale = 1.0f + 0.12f * diff;
                 if ((expandAnimator == null || !expandAnimator.isRunning())) {
                     float avatarX;
+                    avatarScale = (42f + 46f * diff) / 42f;
                     if (openAnimationInProgress) {
                         avatarX = AndroidUtilities.lerp(
                                 INITIAL_AVATAR_X,
@@ -7378,7 +7379,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 diff
                         );
                         avatarY = AndroidUtilities.lerp(initialAvatarY, initialAvatarY + AndroidUtilities.dp(32f), Math.min(1, expandProgress * 3f));
-                        avatarScale = (42f + 46f * diff) / 42f;
 
                         avatarContainer.setScaleX(avatarScale);
                         avatarContainer.setScaleY(avatarScale);
@@ -7394,7 +7394,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         avatarContainer.setScaleY(avatarScale);
 
                         calculateCollapseProgress();
-                        collapseAnimationView.setCollapseProgress(collapseProgress);
+                        collapseAnimationView.setCollapseProgress(collapseProgress, true);
                         collapseAnimationView.setAvatarContainerRect(avatarContainerRect);
                     }
 
@@ -7433,9 +7433,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 updateCollectibleHint();
             }
 
-            if (!openAnimationInProgress && collapseProgress > 0) {
+            if (!openAnimationInProgress && collapseProgress > 0 && collapseProgress < 1) {
                 collapseAnimationView.startRender(hideAvatarContainer);
-            } else {
+            } else if (openAnimationInProgress || collapseProgress <= 0) {
                 collapseAnimationView.stopRender(null);
                 if (!isPulledDown) {
                     avatarContainer.setVisibility(View.VISIBLE);
@@ -8381,6 +8381,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             onlineTextView[i].setTextColor(ColorUtils.blendARGB(i == 0 ? subtitleColor : applyPeerColor(subtitleColor, true, isOnline[0]), i == 0 ? color : applyPeerColor(color, true, isOnline[0]), progress));
         }
         listTopOffset = initialAnimationListTopOffset * progress;
+
         color = AvatarDrawable.getProfileColorForId(userId != 0 ? userId : chatId, resourcesProvider);
         int color2 = AvatarDrawable.getColorForId(userId != 0 ? userId : chatId);
         if (color != color2) {

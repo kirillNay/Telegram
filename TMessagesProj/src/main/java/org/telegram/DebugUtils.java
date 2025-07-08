@@ -55,6 +55,10 @@ public final class DebugUtils {
         Log.w(TAG, message);
     }
 
+    public static void logStacktrace(String message) {
+        Log.w(TAG, message, new IllegalStateException("Fake exception"));
+    }
+
     private static final String TAG = "kirillNay";
 
 }
