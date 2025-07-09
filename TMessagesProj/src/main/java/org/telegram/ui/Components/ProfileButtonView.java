@@ -23,6 +23,7 @@ import android.view.ViewTreeObserver;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.core.content.ContextCompat;
+import kotlin.jvm.functions.Function0;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.Theme;
 
@@ -34,18 +35,22 @@ public class ProfileButtonView extends View {
 
     private final View backgroundSibling;
 
+    private final Theme.ResourcesProvider resourcesProvider;
+
     private ViewTreeObserver viewTreeObserver;
     private RenderNode blurRenderNode;
 
     private final Paint textPaint;
-    private final Drawable drawable;
-    private final String buttonText;
+    private Drawable drawable;
+    private String buttonText;
 
     private float scale = 1f;
 
     private float cornerRadius;
 
-    private Runnable onClickListener;
+    private Runnable onClickCallback;
+
+    private OnLongPressedCallback onLongPressedCallback;
 
     private final ViewTreeObserver.OnDrawListener onDrawListener = this::invalidate;
 
@@ -66,6 +71,7 @@ public class ProfileButtonView extends View {
         super(context);
         this.backgroundSibling = backgroundSibling;
         this.buttonText = buttonText;
+        this.resourcesProvider = resourcesProvider;
         setCornerRadius(cornerRadius);
 
         textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -91,8 +97,28 @@ public class ProfileButtonView extends View {
         });
     }
 
-    public void setClickListener(Runnable listener) {
-        this.onClickListener = listener;
+    public void setClickListener(Runnable callback) {
+        onClickCallback = callback;
+    }
+
+    public void setOnLongPressed(OnLongPressedCallback callback) {
+        onLongPressedCallback = callback;
+    }
+
+    public void setIconRes(int iconRes) {
+        drawable = ContextCompat.getDrawable(getContext(), iconRes);
+        if (drawable != null) {
+            drawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_profile_actionIcon, resourcesProvider), PorterDuff.Mode.SRC_IN));
+        }
+        setScale(1f);
+        invalidate();
+    }
+
+    public void setText(String text) {
+        if (!buttonText.equals(text)) {
+            buttonText = text;
+            invalidate();
+        }
     }
 
     public void setScale(float scale) {
@@ -126,10 +152,23 @@ public class ProfileButtonView extends View {
 
     private boolean isPressed = false;
 
+    private final float[] pressedLoc = new float[2];
+
+    private final Runnable longPressed = () -> {
+        if (isPressed && onLongPressedCallback.onLongPressed(pressedLoc[0], pressedLoc[1])) {
+            AndroidUtilities.vibrateCursor(this);
+            pressed(false);
+        }
+    };
+
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (event.getAction() == MotionEvent.ACTION_DOWN && !isPressed) {
             pressed(true);
+            postDelayed(longPressed, 300);
+            pressedLoc[0] = event.getX();
+            pressedLoc[1] = event.getY();
 
             return true;
         }
@@ -140,8 +179,8 @@ public class ProfileButtonView extends View {
         if (event.getAction() == MotionEvent.ACTION_UP && isPressed) {
             pressed(false);
 
-            if (isX && isY && onClickListener != null) {
-                onClickListener.run();
+            if (isX && isY && onClickCallback != null) {
+                onClickCallback.run();
                 return true;
             }
 
@@ -149,6 +188,8 @@ public class ProfileButtonView extends View {
         }
 
         if (event.getAction() == MotionEvent.ACTION_MOVE) {
+            pressedLoc[0] = event.getX();
+            pressedLoc[1] = event.getY();
             if ((!isX || !isY) && isPressed) {
                 pressed(false);
             }
@@ -265,5 +306,11 @@ public class ProfileButtonView extends View {
             blurRenderNode = new RenderNode("ProfileButtonViewRenderNode");
             blurRenderNode.setRenderEffect(RenderEffect.createBlurEffect(dp(16), dp(16), Shader.TileMode.DECAL));
         }
+    }
+
+    public interface OnLongPressedCallback {
+
+        public boolean onLongPressed(float x, float y);
+
     }
 }

@@ -100,8 +100,6 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
 
         private volatile boolean invalid = true;
 
-        private boolean isAvatarInvalid = false;
-
         // Callbacks
         private Runnable onRenderStopped;
         private Runnable onRenderStarted;
@@ -161,20 +159,11 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             this.isRunning = isRunning;
             isPrepared = true;
             postRunnable(() -> {
-                if (!isImageTexturePrepared) {
-                    try {
-                        initImageTexture();
-                    } catch (InternalRenderException e) {
-                        DebugUtils.error(e);
-                        isPrepared = false;
-                    }
-                }
-
                 final long maxdt = (long) (1000L / Math.max(30, AndroidUtilities.screenRefreshRate));
                 while(this.isPrepared && !isReleased) {
                     long start = System.currentTimeMillis();
                     if (isRunning) {
-                        if (isAvatarInvalid) {
+                        if (!isImageTexturePrepared) {
                             try {
                                 initImageTexture();
                             } catch (InternalRenderException e) {
@@ -225,6 +214,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         public void stopRender(Runnable onStopped) {
             isRunning = false;
             isPrepared = false;
+            isImageTexturePrepared = false;
 
             this.onRenderStopped = onStopped;
         }
@@ -345,17 +335,17 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
         }
 
         private void initImageTexture() throws InternalRenderException {
-            isAvatarInvalid = imageReceiver.getAnimation() != null;
+            if (isImageTexturePrepared) return;
 
             Bitmap avatarBitmap;
-            if (isAvatarInvalid) {
+            if (imageReceiver.getAnimation() != null) {
                 imageReceiver.getAnimation().updateCurrentFrame(System.currentTimeMillis(), false);
                 avatarBitmap = imageReceiver.getAnimation().getAnimatedBitmap();
             } else {
                 avatarBitmap = imageReceiver.getBitmap();
             }
 
-            if (avatarBitmap != null) {
+            if (avatarBitmap != null && !avatarBitmap.isRecycled()) {
                 try {
                     int[] textures = new int[1];
                     GLES20.glGenTextures(1, textures, 0);
