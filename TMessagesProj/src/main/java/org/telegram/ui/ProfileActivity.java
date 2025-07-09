@@ -5421,7 +5421,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         onBotBlock();
                         break;
                     case call_item:
-                        onCall();
+                        onCall(false);
+                        break;
+                    case video_call_item:
+                        onCall(true);
                         break;
                 }
             }
@@ -5597,7 +5600,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         Arrays.fill(iconRes, -1);
         Arrays.fill(textRes, -1);
 
-        if (userId != 0 && !UserObject.isUserSelf(user) || ChatObject.isCanWriteToChannel(chatId, currentAccount)) {
+        if (userId != 0 && !UserObject.isUserSelf(user) || ChatObject.isCanWriteToChannel(chatId, currentAccount) && buttonCounter < 4) {
             buttons.add(send_message);
             iconRes[buttonCounter] = R.drawable.profile_button_message;
             textRes[buttonCounter] = R.string.Message;
@@ -5610,34 +5613,32 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         textRes[buttonCounter] = isMuted ? R.string.Unmute : R.string.Mute;
         buttonCounter++;
 
-        if (isBot || (ChatObject.isChannel(chat)) && !ChatObject.hasAdminRights(chat) && ChatObject.isPublic(chat)) {
+        if (isBot || (ChatObject.isChannel(chat)) && !ChatObject.hasAdminRights(chat) && ChatObject.isPublic(chat) && buttonCounter < 4) {
             buttons.add(share);
             iconRes[buttonCounter] = R.drawable.profile_button_share;
             textRes[buttonCounter] = R.string.BotShare;
             buttonCounter++;
         }
 
-        if (isBot && !userBlocked) {
+        if (isBot && !userBlocked && buttonCounter < 4) {
             buttons.add(block_contact);
             iconRes[buttonCounter] = R.drawable.profile_button_block;
             textRes[buttonCounter] = R.string.Stop;
             buttonCounter++;
         }
-        if (buttonCounter == 4) {
-            profileButtonsLayout.updateButtons(buttons, textRes, iconRes, animated);
-            return;
-        }
 
-        if (!isBot && !UserObject.isUserSelf(user) && chat == null) {
+        if (userInfo != null && userInfo.phone_calls_available && chat == null && buttonCounter < 4) {
             buttons.add(call_item);
             iconRes[buttonCounter] = R.drawable.profile_button_call;
             textRes[buttonCounter] = R.string.Call;
             buttonCounter++;
         }
 
-        if (buttonCounter == 4) {
-            profileButtonsLayout.updateButtons(buttons, textRes, iconRes, animated);
-            return;
+        if (userInfo != null && userInfo.video_calls_available && chat == null && buttonCounter < 4) {
+            buttons.add(video_call_item);
+            iconRes[buttonCounter] = R.drawable.profile_button_video;
+            textRes[buttonCounter] = R.string.GroupCallCreateVideo;
+            buttonCounter++;
         }
 
         profileButtonsLayout.updateButtons(buttons, textRes, iconRes, animated);
@@ -5751,10 +5752,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
-    private void onCall() {
+    private void onCall(boolean isVideo) {
         TLRPC.User user = getMessagesController().getUser(userId);
         if (user != null) {
-            VoIPHelper.startCall(user, false, userInfo != null && userInfo.video_calls_available, getParentActivity(), userInfo, getAccountInstance());
+            VoIPHelper.startCall(user, isVideo, userInfo != null && userInfo.video_calls_available, getParentActivity(), userInfo, getAccountInstance());
         }
     }
 
