@@ -123,6 +123,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
+import org.telegram.DebugUtils;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -480,12 +481,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private float currentExpanAnimatorFracture;
     private final float[] expandAnimatorValues = new float[]{0f, 1f};
 
-    private float collapseProgress;
+    private float collapseProgress = 0f;
+    private boolean isCollapsed = false;
 
     private boolean isInLandscapeMode;
     private boolean needSettleDownScrolling;
     private boolean isPulledDown;
-    private boolean isCollapsed;
+    private boolean isPulledToCollapse;
 
     private final Paint whitePaint = new Paint();
 
@@ -2626,39 +2628,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     });
                     presentFragment(fragment);
                 } else if (id == share) {
-                    try {
-                        String text = null;
-                        if (userId != 0) {
-                            TLRPC.User user = getMessagesController().getUser(userId);
-                            if (user == null) {
-                                return;
-                            }
-                            if (botInfo != null && userInfo != null && !TextUtils.isEmpty(userInfo.about)) {
-                                text = String.format("%s https://" + getMessagesController().linkPrefix + "/%s", userInfo.about, UserObject.getPublicUsername(user));
-                            } else {
-                                text = String.format("https://" + getMessagesController().linkPrefix + "/%s", UserObject.getPublicUsername(user));
-                            }
-                        } else if (chatId != 0) {
-                            TLRPC.Chat chat = getMessagesController().getChat(chatId);
-                            if (chat == null) {
-                                return;
-                            }
-                            if (chatInfo != null && !TextUtils.isEmpty(chatInfo.about)) {
-                                text = String.format("%s\nhttps://" + getMessagesController().linkPrefix + "/%s", chatInfo.about, ChatObject.getPublicUsername(chat));
-                            } else {
-                                text = String.format("https://" + getMessagesController().linkPrefix + "/%s", ChatObject.getPublicUsername(chat));
-                            }
-                        }
-                        if (TextUtils.isEmpty(text)) {
-                            return;
-                        }
-                        Intent intent = new Intent(Intent.ACTION_SEND);
-                        intent.setType("text/plain");
-                        intent.putExtra(Intent.EXTRA_TEXT, text);
-                        startActivityForResult(Intent.createChooser(intent, LocaleController.getString(R.string.BotShare)), 500);
-                    } catch (Exception e) {
-                        FileLog.e(e);
-                    }
+                    onShare();
                 } else if (id == add_shortcut) {
                     try {
                         long did;
@@ -3837,7 +3807,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             if (isPulledDown) {
                                 final int actionBarHeight = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
                                 listView.smoothScrollBy(0, view.getTop() - getExpandedListViewOffset() + actionBarHeight, CubicBezierInterpolator.EASE_OUT_QUINT);
-                            } else if (!isCollapsed) {
+                            } else if (!isPulledToCollapse) {
                                 listView.smoothScrollBy(0, view.getTop() - (int) OPENED_LIST_TOP_OFFSET, CubicBezierInterpolator.EASE_OUT_QUINT);
                             } else {
                                 listView.smoothScrollBy(0, view.getTop(), CubicBezierInterpolator.EASE_OUT);
@@ -3958,7 +3928,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         }
                     } else {
                         if (needSettleDownScrolling && listView.getScrollState() == RecyclerListView.SCROLL_STATE_DRAGGING) {
-                            if (!isCollapsed) {
+                            if (!isPulledToCollapse) {
                                 dy /= 2;
                             }
                         }
@@ -5536,6 +5506,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         profileButtonsLayout = new ProfileButtonLayout(getContext(), avatarContainer2, resourcesProvider);
 
         TLRPC.User user = getMessagesController().getUser(userId);
+        TLRPC.Chat chat = getMessagesController().getChat(chatId);
+
         if (userId != 0 && !UserObject.isUserSelf(user) || ChatObject.isCanWriteToChannel(chatId, currentAccount)) {
             profileButtonsLayout.addButton(send_message, LocaleController.getString(R.string.Message), R.drawable.profile_button_message);
         }
@@ -5543,12 +5515,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         boolean isMuted = getMessagesController().isDialogMuted(getDialogId(), topicId);
         profileButtonsLayout.addButton(notification, LocaleController.getString(isMuted ? R.string.Unmute : R.string.Mute), isMuted ? R.drawable.profile_button_unmute : R.drawable.profile_button_mute);
 
+        if (isBot || (ChatObject.isChannel(chat)) && !ChatObject.hasAdminRights(chat) && ChatObject.isPublic(chat)) {
+            profileButtonsLayout.addButton(share, LocaleController.getString(R.string.BotShare), R.drawable.profile_button_share);
+        }
+
         profileButtonsLayout.addButtonCallback(new ProfileButtonLayout.ProfileButtonCallback() {
             @Override
             public void onClicked(int id) {
                 switch (id) {
-                    case send_message: onSendMessage();
-                    case notification: onNotification();
+                    case send_message:
+                        onSendMessage();
+                        break;
+                    case notification:
+                        onNotification();
+                        break;
+                    case share:
+                        onShare();
+                        break;
                 }
             }
 
@@ -5620,6 +5603,42 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         updateExceptions();
 
         profileButtonsLayout.updateButton(notification, LocaleController.getString(!muted ? R.string.Unmute : R.string.Mute), !muted ? R.drawable.profile_button_unmute : R.drawable.profile_button_mute);
+    }
+
+    private void onShare() {
+        try {
+            String text = null;
+            if (userId != 0) {
+                TLRPC.User user = getMessagesController().getUser(userId);
+                if (user == null) {
+                    return;
+                }
+                if (botInfo != null && userInfo != null && !TextUtils.isEmpty(userInfo.about)) {
+                    text = String.format("%s https://" + getMessagesController().linkPrefix + "/%s", userInfo.about, UserObject.getPublicUsername(user));
+                } else {
+                    text = String.format("https://" + getMessagesController().linkPrefix + "/%s", UserObject.getPublicUsername(user));
+                }
+            } else if (chatId != 0) {
+                TLRPC.Chat chat = getMessagesController().getChat(chatId);
+                if (chat == null) {
+                    return;
+                }
+                if (chatInfo != null && !TextUtils.isEmpty(chatInfo.about)) {
+                    text = String.format("%s\nhttps://" + getMessagesController().linkPrefix + "/%s", chatInfo.about, ChatObject.getPublicUsername(chat));
+                } else {
+                    text = String.format("https://" + getMessagesController().linkPrefix + "/%s", ChatObject.getPublicUsername(chat));
+                }
+            }
+            if (TextUtils.isEmpty(text)) {
+                return;
+            }
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType("text/plain");
+            intent.putExtra(Intent.EXTRA_TEXT, text);
+            startActivityForResult(Intent.createChooser(intent, LocaleController.getString(R.string.BotShare)), 500);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
     }
 
     private void onNotificationPressed(View view, float x, float y) {
@@ -5888,12 +5907,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private void calculateCollapseProgress() {
         float idleAvatarCy = getActionBarY() + AndroidUtilities.dp(7);
         collapseProgress = (idleAvatarCy - avatarY) / (idleAvatarCy + avatarContainer.getHeight() * MIN_AVATAR_SCALE);
-
         updateAvatarRect();
+        if (collapseProgress < 1 && isCollapsed) {
+            isCollapsed = false;
+            createActionBarMenu(false);
+        } else if (collapseProgress >= 1 && !isCollapsed) {
+            isCollapsed = true;
+            createActionBarMenu(false);
+        }
     }
 
     private void updateAvatarRect() {
-        if (collapseProgress > 0) {
+        if (collapseProgress >= 0) {
             float avatarScale = lerp(DEFAULT_AVATAR_SCALE, MIN_AVATAR_SCALE, collapseProgress);
             float avatarW = INITIAL_AVATAR_CONTAINER_SIZE_PX * avatarScale;
             float avatarH = INITIAL_AVATAR_CONTAINER_SIZE_PX * avatarScale;
@@ -7523,9 +7548,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 needSettleDownScrolling = true;
 
                 if (collapseProgress >= 0.2 && !openAnimationInProgress) {
-                    isCollapsed = true;
+                    isPulledToCollapse = true;
                 } else if (collapseProgress < 0.2 && !openAnimationInProgress) {
-                    isCollapsed = false;
+                    isPulledToCollapse = false;
                 }
 
                 if (profileButtonsLayout != null) {
@@ -10521,9 +10546,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             createAutoDeleteItem(context);
                         }
                         otherItem.addSubItem(add_shortcut, R.drawable.msg_home, LocaleController.getString(R.string.AddShortcut));
-                        if (isBot) {
+                        if (isBot && isCollapsed) {
                             otherItem.addSubItem(share, R.drawable.msg_share, LocaleController.getString(R.string.BotShare));
-                        } else {
+                        } else if (!isBot) {
                             otherItem.addSubItem(add_contact, R.drawable.msg_addcontact, LocaleController.getString(R.string.AddContact));
                         }
                         if (!TextUtils.isEmpty(user.phone)) {
@@ -10611,7 +10636,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     if (chat.creator || chat.admin_rights != null && chat.admin_rights.edit_stories) {
                         otherItem.addSubItem(channel_stories, R.drawable.msg_archive, LocaleController.getString(R.string.OpenChannelArchiveStories));
                     }
-                    if (ChatObject.isPublic(chat)) {
+                    if (ChatObject.isPublic(chat) && isCollapsed) {
                         otherItem.addSubItem(share, R.drawable.msg_share, LocaleController.getString(R.string.BotShare));
                     }
                     if (!BuildVars.IS_BILLING_UNAVAILABLE && !getMessagesController().premiumPurchaseBlocked()) {
