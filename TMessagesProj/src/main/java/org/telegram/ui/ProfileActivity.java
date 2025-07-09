@@ -123,7 +123,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
-import org.telegram.DebugUtils;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -309,6 +308,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -814,6 +814,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         private ProfileButtonCallback listener;
 
+        private final List<Integer> currentButtonIds = new ArrayList<>();
+
         public ProfileButtonLayout(Context context, View background, Theme.ResourcesProvider resourcesProvider) {
             super(context);
             this.resourcesProvider = resourcesProvider;
@@ -825,6 +827,52 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return this;
         }
 
+        public ProfileButtonLayout updateButtons(List<Integer> newIds, int[] texts, int[] icons, boolean animated) {
+            List<Integer> toRemove = new ArrayList<>(currentButtonIds);
+            toRemove.removeAll(newIds);
+
+            List<Integer> toAdd = new ArrayList<>(newIds);
+            toAdd.removeAll(currentButtonIds);
+
+            if (toRemove.isEmpty() && toAdd.isEmpty() && currentButtonIds.equals(newIds)) {
+                return this;
+            }
+
+            for (int id : toRemove) {
+                ProfileButtonView view = findViewWithTag(id);
+                if (view != null) {
+                    if (animated) {
+                        view.animate().alpha(0f).scaleX(0.8f).setDuration(200).withEndAction(() -> removeView(view)).start();
+                    } else {
+                        removeView(view);
+                    }
+                }
+            }
+
+            for (int id : toAdd) {
+                int index = newIds.indexOf(id);
+                if (index >= icons.length || index >= texts.length || icons[index] == -1 || texts[index] == -1) {
+                    continue;
+                }
+                ProfileButtonView buttonView = new ProfileButtonView(getContext(), background, resourcesProvider, icons[index], LocaleController.getString(texts[index]), dp(8));
+                buttonView.setTag(id);
+                buttonView.setClickListener(() -> listener.onClicked(id));
+                buttonView.setOnLongPressed((x, y) -> listener.onLongPressed(id, buttonView, x, y));
+                if (animated) {
+                    buttonView.setAlpha(0f);
+                    addView(buttonView);
+                    buttonView.animate().alpha(1f).setDuration(200).start();
+                } else {
+                    addView(buttonView);
+                }
+            }
+
+            currentButtonIds.clear();
+            currentButtonIds.addAll(newIds);
+
+            return this;
+        }
+
         public ProfileButtonLayout addButton(int id, String text, int iconRes) {
             ProfileButtonView buttonView = new ProfileButtonView(getContext(), background, resourcesProvider, iconRes, text, dp(8));
             buttonView.setTag(id);
@@ -832,6 +880,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             buttonView.setOnLongPressed((float x, float y) -> listener.onLongPressed(id, buttonView, x, y));
             addView(buttonView);
 
+            return this;
+        }
+
+        public ProfileButtonLayout removeAllButtons() {
+            removeAllViews();
             return this;
         }
 
@@ -2448,17 +2501,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         }
                     } else {
                         if (!userBlocked) {
-                            AlertsCreator.createClearOrDeleteDialogAlert(ProfileActivity.this, false, currentChat, user, currentEncryptedChat != null, true, true, (param) -> {
-                                if (getParentLayout() != null) {
-                                    List<BaseFragment> fragmentStack = getParentLayout().getFragmentStack();
-                                    BaseFragment prevFragment = fragmentStack == null || fragmentStack.size() < 2 ? null : fragmentStack.get(fragmentStack.size() - 2);
-                                    if (prevFragment instanceof ChatActivity) {
-                                        getParentLayout().removeFragmentFromStack(fragmentStack.size() - 2);
-                                    }
-                                }
-                                finishFragment();
-                                getNotificationCenter().postNotificationName(NotificationCenter.needDeleteDialog, dialogId, user, currentChat, param);
-                            }, getResourceProvider());
+                            onBotBlock();
                         } else {
                             getMessagesController().unblockPeer(userId, ()-> getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of("/start", userId, null, null, null, false, null, null, null, true, 0, null, false)));
                             finishFragment();
@@ -5355,7 +5398,42 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         createBirthdayEffect();
         createFloatingActionButton(getContext());
-        createProfileButtons();
+        profileButtonsLayout = new ProfileButtonLayout(getContext(), avatarContainer2, resourcesProvider);
+        profileButtonsLayout.addButtonCallback(new ProfileButtonLayout.ProfileButtonCallback() {
+            @Override
+            public void onClicked(int id) {
+                switch (id) {
+                    case send_message:
+                        onSendMessage();
+                        break;
+                    case notification:
+                        onNotification();
+                        break;
+                    case share:
+                        onShare();
+                        break;
+                    case block_contact:
+                        onBotBlock();
+                        break;
+                    case call_item:
+                        onCall();
+                        break;
+                }
+            }
+
+            @Override
+            public boolean onLongPressed(int id, View view, float x, float y) {
+                switch (id) {
+                    case notification:
+                        onNotificationPressed(view, x, y);
+                        return true;
+                }
+
+                return false;
+            }
+        });
+        updateProfileButtons(false);
+        ((FrameLayout) fragmentView).addView(profileButtonsLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.START, 14, 0, 14, 0));
 
         if (myProfile) {
             contentView.addView(bottomButtonsContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 72 + (1 / AndroidUtilities.density), Gravity.BOTTOM | Gravity.FILL_HORIZONTAL));
@@ -5502,52 +5580,62 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         updateFloatingButtonOffset();
     }
 
-    private void createProfileButtons() {
-        profileButtonsLayout = new ProfileButtonLayout(getContext(), avatarContainer2, resourcesProvider);
-
+    List<Integer> buttons = new ArrayList<>(4);
+    int[] iconRes = new int[4];
+    int[] textRes = new int[4];
+    private void updateProfileButtons(boolean animated) {
         TLRPC.User user = getMessagesController().getUser(userId);
         TLRPC.Chat chat = getMessagesController().getChat(chatId);
 
+        int buttonCounter = 0;
+        buttons.clear();
+        Arrays.fill(iconRes, -1);
+        Arrays.fill(textRes, -1);
+
         if (userId != 0 && !UserObject.isUserSelf(user) || ChatObject.isCanWriteToChannel(chatId, currentAccount)) {
-            profileButtonsLayout.addButton(send_message, LocaleController.getString(R.string.Message), R.drawable.profile_button_message);
+            buttons.add(send_message);
+            iconRes[buttonCounter] = R.drawable.profile_button_message;
+            textRes[buttonCounter] = R.string.Message;
+            buttonCounter++;
         }
 
         boolean isMuted = getMessagesController().isDialogMuted(getDialogId(), topicId);
-        profileButtonsLayout.addButton(notification, LocaleController.getString(isMuted ? R.string.Unmute : R.string.Mute), isMuted ? R.drawable.profile_button_unmute : R.drawable.profile_button_mute);
+        buttons.add(notification);
+        iconRes[buttonCounter] = isMuted ? R.drawable.profile_button_unmute : R.drawable.profile_button_mute;
+        textRes[buttonCounter] = isMuted ? R.string.Unmute : R.string.Mute;
+        buttonCounter++;
 
         if (isBot || (ChatObject.isChannel(chat)) && !ChatObject.hasAdminRights(chat) && ChatObject.isPublic(chat)) {
-            profileButtonsLayout.addButton(share, LocaleController.getString(R.string.BotShare), R.drawable.profile_button_share);
+            buttons.add(share);
+            iconRes[buttonCounter] = R.drawable.profile_button_share;
+            textRes[buttonCounter] = R.string.BotShare;
+            buttonCounter++;
         }
 
-        profileButtonsLayout.addButtonCallback(new ProfileButtonLayout.ProfileButtonCallback() {
-            @Override
-            public void onClicked(int id) {
-                switch (id) {
-                    case send_message:
-                        onSendMessage();
-                        break;
-                    case notification:
-                        onNotification();
-                        break;
-                    case share:
-                        onShare();
-                        break;
-                }
-            }
+        if (isBot && !userBlocked) {
+            buttons.add(block_contact);
+            iconRes[buttonCounter] = R.drawable.profile_button_block;
+            textRes[buttonCounter] = R.string.Stop;
+            buttonCounter++;
+        }
+        if (buttonCounter == 4) {
+            profileButtonsLayout.updateButtons(buttons, textRes, iconRes, animated);
+            return;
+        }
 
-            @Override
-            public boolean onLongPressed(int id, View view, float x, float y) {
-                switch (id) {
-                    case notification:
-                        onNotificationPressed(view, x, y);
-                        return true;
-                }
+        if (!isBot && !UserObject.isUserSelf(user) && chat == null) {
+            buttons.add(call_item);
+            iconRes[buttonCounter] = R.drawable.profile_button_call;
+            textRes[buttonCounter] = R.string.Call;
+            buttonCounter++;
+        }
 
-                return false;
-            }
-        });
+        if (buttonCounter == 4) {
+            profileButtonsLayout.updateButtons(buttons, textRes, iconRes, animated);
+            return;
+        }
 
-        ((FrameLayout) fragmentView).addView(profileButtonsLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.START, 14, 0, 14, 0));
+        profileButtonsLayout.updateButtons(buttons, textRes, iconRes, animated);
     }
 
     private void onSendMessage() {
@@ -5638,6 +5726,30 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             startActivityForResult(Intent.createChooser(intent, LocaleController.getString(R.string.BotShare)), 500);
         } catch (Exception e) {
             FileLog.e(e);
+        }
+    }
+
+    private void onBotBlock() {
+        TLRPC.User user = getMessagesController().getUser(userId);
+        if (user != null) {
+            AlertsCreator.createClearOrDeleteDialogAlert(ProfileActivity.this, false, currentChat, user, currentEncryptedChat != null, true, true, (param) -> {
+                if (getParentLayout() != null) {
+                    List<BaseFragment> fragmentStack = getParentLayout().getFragmentStack();
+                    BaseFragment prevFragment = fragmentStack == null || fragmentStack.size() < 2 ? null : fragmentStack.get(fragmentStack.size() - 2);
+                    if (prevFragment instanceof ChatActivity) {
+                        getParentLayout().removeFragmentFromStack(fragmentStack.size() - 2);
+                    }
+                }
+                finishFragment();
+                getNotificationCenter().postNotificationName(NotificationCenter.needDeleteDialog, dialogId, user, currentChat, param);
+            }, getResourceProvider());
+        }
+    }
+
+    private void onCall() {
+        TLRPC.User user = getMessagesController().getUser(userId);
+        if (user != null) {
+            VoIPHelper.startCall(user, false, userInfo != null && userInfo.video_calls_available, getParentActivity(), userInfo, getAccountInstance());
         }
     }
 
@@ -7970,6 +8082,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             updateProfileData(false);
         } else if (id == NotificationCenter.contactsDidLoad || id == NotificationCenter.channelRightsUpdated) {
             createActionBarMenu(true);
+            updateProfileButtons(true);
         } else if (id == NotificationCenter.encryptedChatCreated) {
             if (creatingChat) {
                 AndroidUtilities.runOnUIThread(() -> {
@@ -7994,6 +8107,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             boolean oldValue = userBlocked;
             userBlocked = getMessagesController().blockePeers.indexOfKey(userId) >= 0;
             if (oldValue != userBlocked) {
+                updateProfileButtons(true);
                 createActionBarMenu(true);
                 updateListAnimated(false);
             }
@@ -8012,6 +8126,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
                 if (chatInfo != null && (chatInfo.call == null && !hasVoiceChatItem || chatInfo.call != null && hasVoiceChatItem)) {
                     createActionBarMenu(false);
+                    updateProfileButtons(true);
                 }
                 if (storyView != null && chatInfo != null) {
                     storyView.setStories(chatInfo.stories);
@@ -8050,6 +8165,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 if (newChat != null) {
                     currentChat = newChat;
                     createActionBarMenu(true);
+                    updateProfileButtons(true);
                 }
                 if (flagSecure != null) {
                     flagSecure.invalidate();
@@ -8104,6 +8220,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 } else {
                     if (!openAnimationInProgress) {
                         createActionBarMenu(true);
+                        updateProfileButtons(true);
                     } else {
                         recreateMenuAfterAnimation = true;
                     }
@@ -10562,9 +10679,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 otherItem.hideSubItem(bot_privacy);
                             }
                             otherItem.addSubItem(report, R.drawable.msg_report, LocaleController.getString(R.string.ReportBot)).setColors(getThemedColor(Theme.key_text_RedRegular), getThemedColor(Theme.key_text_RedRegular));
-                            if (!userBlocked) {
+                            if (!userBlocked && isCollapsed) {
                                 otherItem.addSubItem(block_contact, R.drawable.msg_block2, LocaleController.getString(R.string.DeleteAndBlock)).setColors(getThemedColor(Theme.key_text_RedRegular), getThemedColor(Theme.key_text_RedRegular));
-                            } else {
+                            } else if (userBlocked) {
                                 otherItem.addSubItem(block_contact, R.drawable.msg_retry, LocaleController.getString(R.string.BotRestart));
                             }
                         } else {
