@@ -1,5 +1,7 @@
 package org.telegram.ui.Components;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -23,7 +25,8 @@ import android.view.ViewTreeObserver;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.core.content.ContextCompat;
-import kotlin.jvm.functions.Function0;
+import com.google.android.exoplayer2.util.Log;
+import org.telegram.DebugUtils;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.Theme;
 
@@ -41,8 +44,18 @@ public class ProfileButtonView extends View {
     private RenderNode blurRenderNode;
 
     private final Paint textPaint;
+
+    private int newIconRes;
+    private int iconRes;
+
+    private Drawable newDrawable;
     private Drawable drawable;
+
+    private String newButtonText;
     private String buttonText;
+
+    private boolean isTextInvalid;
+    private boolean isIconInvalid;
 
     private float scale = 1f;
     private boolean backgroundBlur = false;
@@ -61,17 +74,17 @@ public class ProfileButtonView extends View {
     private final ValueAnimator pressedAnimator;
     private float pressedProgress = 0f;
 
+    private final ValueAnimator changeAnimation;
+    private float changeProgress = 0f;
+
     public ProfileButtonView(
             Context context,
             View backgroundSibling,
             Theme.ResourcesProvider resourcesProvider,
-            int iconRes,
-            String buttonText,
             float cornerRadius
     ) {
         super(context);
         this.backgroundSibling = backgroundSibling;
-        this.buttonText = buttonText;
         this.resourcesProvider = resourcesProvider;
         setCornerRadius(cornerRadius);
 
@@ -79,11 +92,6 @@ public class ProfileButtonView extends View {
         textPaint.setColor(Theme.getColor(Theme.key_profile_title, resourcesProvider));
         textPaint.setTypeface(AndroidUtilities.bold());
         textPaint.setTextAlign(Paint.Align.CENTER);
-
-        drawable = ContextCompat.getDrawable(context, iconRes);
-        if (drawable != null) {
-            drawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_profile_actionIcon, resourcesProvider), PorterDuff.Mode.SRC_IN));
-        }
 
         setScale(1f);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
@@ -96,6 +104,43 @@ public class ProfileButtonView extends View {
             setScaleY(lerp(1f, 0.95f, pressedProgress));
             invalidate();
         });
+
+        changeAnimation = ValueAnimator.ofFloat(0f, 1f);
+        changeAnimation.setDuration(110L);
+        changeAnimation.setInterpolator(CubicBezierInterpolator.DEFAULT);
+        changeAnimation.addUpdateListener(animation -> {
+            changeProgress = (float) animation.getAnimatedValue();
+            invalidate();
+        });
+        changeAnimation.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                buttonText = newButtonText;
+                iconRes = newIconRes;
+                drawable = newDrawable;
+
+                isTextInvalid = false;
+                isIconInvalid = false;
+                changeProgress = 0;
+
+                newButtonText = null;
+                newDrawable = null;
+                newIconRes = -1;
+
+                invalidate();
+            }
+        });
+    }
+
+    private Drawable createDrawable(int iconRes) {
+        Drawable drawable = ContextCompat.getDrawable(getContext(), iconRes);
+        if (drawable != null) {
+            drawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_profile_actionIcon, resourcesProvider), PorterDuff.Mode.SRC_IN));
+            float iconSize = dp(62) * scale - 2 * dp(8) - textPaint.getTextSize() - dp(8);
+            drawable.setBounds(0, 0, (int) (iconSize), (int) (iconSize));
+        }
+
+        return drawable;
     }
 
     public void setClickListener(Runnable callback) {
@@ -106,20 +151,45 @@ public class ProfileButtonView extends View {
         onLongPressedCallback = callback;
     }
 
-    public void setIconRes(int iconRes) {
-        drawable = ContextCompat.getDrawable(getContext(), iconRes);
-        if (drawable != null) {
-            drawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_profile_actionIcon, resourcesProvider), PorterDuff.Mode.SRC_IN));
-        }
-        setScale(1f);
-        invalidate();
+    public ProfileButtonView setIconRes(int icon) {
+        newIconRes = icon;
+        newDrawable = createDrawable(icon);
+
+        return this;
     }
 
-    public void setText(String text) {
-        if (!buttonText.equals(text)) {
-            buttonText = text;
+    public ProfileButtonView setText(String text) {
+        newButtonText = text;
+
+        return this;
+    }
+
+    public ProfileButtonView applyChanges(boolean animate) {
+        isTextInvalid = !newButtonText.equals(buttonText);
+        isIconInvalid = iconRes != newIconRes;
+
+        if (!isTextInvalid && !isIconInvalid) return this;
+
+        if (animate) {
+            if (changeAnimation.isRunning()) {
+                changeAnimation.cancel();
+            }
+            changeAnimation.start();
+        } else {
+            buttonText = newButtonText;
+            drawable = newDrawable;
+            iconRes = newIconRes;
+            isIconInvalid = false;
+            isTextInvalid = false;
+            changeProgress = 0;
+
+            newButtonText = null;
+            newDrawable = null;
+            newIconRes = -1;
             invalidate();
         }
+
+        return this;
     }
 
     public void setScale(float scale) {
@@ -127,7 +197,9 @@ public class ProfileButtonView extends View {
 
         textPaint.setTextSize(lerp(dp(10), dp(6), 1 - scale));
         float iconSize = dp(62) * scale - 2 * dp(8) - textPaint.getTextSize() - dp(8);
-        drawable.setBounds(0, 0, (int) (iconSize), (int) (iconSize));
+        if (drawable != null) {
+            drawable.setBounds(0, 0, (int) (iconSize), (int) (iconSize));
+        }
     }
 
     public void enableBackgroundBlur(boolean enable) {
@@ -184,7 +256,7 @@ public class ProfileButtonView extends View {
         if (event.getAction() == MotionEvent.ACTION_UP && isPressed) {
             pressed(false);
 
-            if (isX && isY && onClickCallback != null) {
+            if (isX && isY && onClickCallback != null && !changeAnimation.isRunning()) {
                 onClickCallback.run();
                 return true;
             }
@@ -267,14 +339,31 @@ public class ProfileButtonView extends View {
         }
         canvas.drawColor(Color.argb(40 + lerp(0, 20, pressedProgress), 0, 0, 0));
 
-        canvas.save();
-        canvas.translate(getWidth() / 2f - drawable.getBounds().width() / 2f, dp(8));
-        drawable.draw(canvas);
-        canvas.restore();
+        if (drawable != null) {
+            canvas.save();
+            canvas.translate(getWidth() / 2f - drawable.getBounds().width() / 2f, dp(8));
+            drawable.setAlpha((int) ((1f - changeProgress) * 255));
+            drawable.draw(canvas);
+            canvas.restore();
+        }
 
-        canvas.drawText(buttonText, getWidth() / 2f, getHeight() - dp(8) - textPaint.descent(), textPaint);
+        if (isIconInvalid && newDrawable != null) {
+            canvas.save();
+            canvas.translate(getWidth() / 2f - newDrawable.getBounds().width() / 2f, dp(8));
+            newDrawable.setAlpha((int) (changeProgress * 255));
+            newDrawable.draw(canvas);
+            canvas.restore();
+        }
 
-        canvas.restore();
+        if (buttonText != null) {
+            textPaint.setAlpha((int) ((1f - changeProgress) * 255));
+            canvas.drawText(buttonText, getWidth() / 2f, getHeight() - dp(8) - textPaint.descent(), textPaint);
+        }
+
+        if (isTextInvalid && newButtonText != null) {
+            textPaint.setAlpha((int) (changeProgress * 255));
+            canvas.drawText(newButtonText, getWidth() / 2f, getHeight() - dp(8) - textPaint.descent(), textPaint);
+        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.S)

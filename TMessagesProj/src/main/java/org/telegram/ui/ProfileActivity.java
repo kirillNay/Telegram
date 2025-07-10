@@ -157,7 +157,6 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.SvgHelper;
-import org.telegram.messenger.TranslateController;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
@@ -310,7 +309,6 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -483,7 +481,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private float currentExpanAnimatorFracture;
     private final float[] expandAnimatorValues = new float[]{0f, 1f};
 
-    private float collapseProgress = 0f;
+    private float avatarCollapseProgress = 0f;
     private boolean isCollapsed = false;
 
     private boolean isInLandscapeMode;
@@ -563,7 +561,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private final static int bot_privacy = 44;
     private final static int add_channel_story = 45;
 
-    private final static float OPENED_LIST_TOP_OFFSET = dp(205f);
+    private float openedListTopOffset = dp(205f);
     public final static float INITIAL_AVATAR_CONTAINER_SIZE_PX = dp(42f);
     public final static float DEFAULT_AVATAR_SCALE = (42f + 46f) / 42f;
     public final static float MIN_AVATAR_SCALE = 0.8f;
@@ -781,7 +779,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     };
     private boolean fragmentOpened;
     private NestedFrameLayout contentView;
-    private float titleAnimationsYDiff;
     private float customAvatarProgress;
     private float customPhotoOffset;
     private boolean hasFallbackPhoto;
@@ -835,96 +832,52 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
 
         public ProfileButtonLayout updateButtons(List<Integer> newIds, int[] texts, int[] icons, boolean animated) {
-            List<Integer> toRemove = new ArrayList<>(currentButtonIds);
-            toRemove.removeAll(newIds);
-
-            List<Integer> toAdd = new ArrayList<>(newIds);
-            toAdd.removeAll(currentButtonIds);
-
-            if (toRemove.isEmpty() && toAdd.isEmpty() && currentButtonIds.equals(newIds)) {
-                return this;
+            if (newIds.size() < currentButtonIds.size()) {
+                for (int i = 0; i < currentButtonIds.size() - newIds.size(); i++) {
+                    View viewToDelete = getChildAt(currentButtonIds.size() - i);
+                    if (viewToDelete != null && animated) {
+                        viewToDelete
+                                .animate()
+                                .alpha(0f)
+                                .scaleX(0.2f)
+                                .setDuration(200)
+                                .withEndAction(() -> removeView(viewToDelete))
+                                .start();
+                    } else if (viewToDelete != null) {
+                        removeView(viewToDelete);
+                    }
+                }
             }
-
-            for (int id : toRemove) {
-                ProfileButtonView view = findViewWithTag(id);
-                if (view != null) {
+            if (newIds.size() > currentButtonIds.size()) {
+                for (int i = 0; i < newIds.size() - currentButtonIds.size(); i++) {
+                    ProfileButtonView profileButtonView = new ProfileButtonView(getContext(), background, resourcesProvider, dp(8));
+                    addView(profileButtonView);
                     if (animated) {
-                        view.animate().alpha(0f).scaleX(0.8f).setDuration(200).withEndAction(() -> removeView(view)).start();
-                    } else {
-                        removeView(view);
+                        profileButtonView.setScaleX(0.2f);
+                        profileButtonView.setAlpha(0.0f);
+                        profileButtonView.animate().scaleX(1f).alpha(1f).start();
                     }
                 }
             }
 
-            for (int id : toAdd) {
-                int index = newIds.indexOf(id);
-                if (index >= icons.length || index >= texts.length || icons[index] == -1 || texts[index] == -1) {
-                    continue;
-                }
-                ProfileButtonView buttonView = new ProfileButtonView(getContext(), background, resourcesProvider, icons[index], LocaleController.getString(texts[index]), dp(8));
-                buttonView.setTag(id);
-                buttonView.setClickListener(() -> listener.onClicked(id));
-                buttonView.setOnLongPressed((x, y) -> listener.onLongPressed(id, buttonView, x, y));
-                if (animated) {
-                    buttonView.setAlpha(0f);
-                    addView(buttonView);
-                    buttonView.animate().alpha(1f).setDuration(200).start();
-                } else {
-                    addView(buttonView);
+            for (int i = 0; i < newIds.size(); i++) {
+                View view = getChildAt(i);
+                int id = newIds.get(i);
+                if (view instanceof ProfileButtonView) {
+                    ProfileButtonView buttonView = (ProfileButtonView) view;
+                    buttonView
+                            .setIconRes(icons[i])
+                            .setText(LocaleController.getString(texts[i]))
+                            .applyChanges(animated);
+
+                    buttonView.setClickListener(() -> listener.onClicked(id));
+                    buttonView.setOnLongPressed((x, y) -> listener.onLongPressed(id, buttonView, x, y));
                 }
             }
 
             currentButtonIds.clear();
             currentButtonIds.addAll(newIds);
 
-            return this;
-        }
-
-        public ProfileButtonLayout addButton(int id, String text, int iconRes) {
-            ProfileButtonView buttonView = new ProfileButtonView(getContext(), background, resourcesProvider, iconRes, text, dp(8));
-            buttonView.setTag(id);
-            buttonView.setClickListener(() -> listener.onClicked(id));
-            buttonView.setOnLongPressed((float x, float y) -> listener.onLongPressed(id, buttonView, x, y));
-            addView(buttonView);
-
-            return this;
-        }
-
-        public ProfileButtonLayout removeAllButtons() {
-            removeAllViews();
-            return this;
-        }
-
-        public ProfileButtonLayout removeButton(int id) {
-            View view = findViewWithTag(id);
-            if (view != null) {
-                removeView(view);
-            }
-            return this;
-        }
-
-        public ProfileButtonLayout updateButton(int id, int iconRes) {
-            View view = findViewWithTag(id);
-            if (view instanceof ProfileButtonView) {
-                ((ProfileButtonView) view).setIconRes(iconRes);
-            }
-            return this;
-        }
-
-        public ProfileButtonLayout updateButton(int id, String text) {
-            View view = findViewWithTag(id);
-            if (view instanceof ProfileButtonView) {
-                ((ProfileButtonView) view).setText(text);
-            }
-            return this;
-        }
-
-        public ProfileButtonLayout updateButton(int id, String text, int iconRes) {
-            View view = findViewWithTag(id);
-            if (view instanceof ProfileButtonView) {
-                ((ProfileButtonView) view).setIconRes(iconRes);
-                ((ProfileButtonView) view).setText(text);
-            }
             return this;
         }
 
@@ -1380,7 +1333,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 if (backgroundGradient == null || backgroundGradientColor1 != color1 || backgroundGradientColor2 != color2 || backgroundGradientHeight != gradientHeight) {
                     backgroundGradient = new RadialGradient(
                             listView.getMeasuredWidth() / 2f - avatarContainer.getMeasuredWidth() / 2f,
-                            collapseProgress > 0 ? avatarContainerRect.centerY() : avatarY + avatarContainer.getMeasuredHeight() / 2f * avatarScale,
+                            avatarCollapseProgress > 0 ? avatarContainerRect.centerY() : avatarY + avatarContainer.getMeasuredHeight() / 2f * avatarScale,
                             backgroundGradientHeight = listView.getMeasuredWidth() / 2,
                             new int[] { backgroundGradientColor2 = color2, backgroundGradientColor1 = color1 },
                             null,
@@ -1412,7 +1365,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 hasCutout,
                                 avatarContainerRect.centerX(),
                                 avatarContainerRect.centerY(),
-                                collapseProgress,
+                                avatarCollapseProgress,
                                 expandProgress > 0
                         );
 
@@ -1423,7 +1376,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 Math.min(1f, listTopOffset / dp(88)),
                                 avatarContainerRect.centerX(),
                                 avatarContainerRect.centerY(),
-                                collapseProgress,
+                                avatarCollapseProgress,
                                 expandProgress > 0
                         );
 
@@ -2163,6 +2116,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 getMediaDataController().checkFeaturedStickers();
                 getMessagesController().loadSuggestedFilters();
                 getMessagesController().loadUserInfo(getUserConfig().getCurrentUser(), true, classGuid);
+                openedListTopOffset = dp(146f);
+            } else {
+                openedListTopOffset = dp(205f);
             }
             actionBarAnimationColorFrom = arguments.getInt("actionBarColor", 0);
         } else if (chatId != 0) {
@@ -2468,7 +2424,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         searchTransitionProgress = 1f;
         searchMode = false;
         hasOwnBackground = true;
-        listTopOffset = OPENED_LIST_TOP_OFFSET;
+        listTopOffset = openedListTopOffset;
         // region actionBar handling
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
@@ -2945,7 +2901,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             doNotSetForeground = true;
                             final View view = layoutManager.findViewByPosition(0);
                             if (view != null) {
-                                listView.smoothScrollBy(0, view.getTop() - (int) OPENED_LIST_TOP_OFFSET, CubicBezierInterpolator.EASE_OUT_QUINT);
+                                listView.smoothScrollBy(0, view.getTop() - (int) openedListTopOffset, CubicBezierInterpolator.EASE_OUT_QUINT);
                             }
                         }
                     });
@@ -3049,7 +3005,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     }
 
                     if (emptyView != null) {
-                        ((LayoutParams) emptyView.getLayoutParams()).topMargin = (int) OPENED_LIST_TOP_OFFSET + AndroidUtilities.statusBarHeight;
+                        ((LayoutParams) emptyView.getLayoutParams()).topMargin = (int) openedListTopOffset + AndroidUtilities.statusBarHeight;
                     }
                 }
 
@@ -3128,11 +3084,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     int paddingTop;
                     int paddingBottom;
                     if (isInLandscapeMode) {
-                        paddingTop = (int) OPENED_LIST_TOP_OFFSET;
+                        paddingTop = (int) openedListTopOffset;
                         paddingBottom = 0;
                     } else {
                         paddingTop = getExpandedListViewOffset();
-                        paddingBottom = Math.max(0, getMeasuredHeight() - (listContentHeight + (int) OPENED_LIST_TOP_OFFSET + actionBarHeight));
+                        paddingBottom = Math.max(0, getMeasuredHeight() - (listContentHeight + (int) openedListTopOffset + actionBarHeight));
                     }
                     if (banFromGroup != 0) {
                         paddingBottom += AndroidUtilities.dp(48);
@@ -3155,11 +3111,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     int paddingTop;
                     int paddingBottom;
                     if (isInLandscapeMode || AndroidUtilities.isTablet()) {
-                        paddingTop = (int) OPENED_LIST_TOP_OFFSET;
+                        paddingTop = (int) openedListTopOffset;
                         paddingBottom = 0;
                     } else {
                         paddingTop = getExpandedListViewOffset();
-                        paddingBottom = Math.max(0, getMeasuredHeight() - (listContentHeight + (int) OPENED_LIST_TOP_OFFSET + actionBarHeight));
+                        paddingBottom = Math.max(0, getMeasuredHeight() - (listContentHeight + (int) openedListTopOffset + actionBarHeight));
                     }
                     if (banFromGroup != 0) {
                         paddingBottom += AndroidUtilities.dp(48);
@@ -3201,13 +3157,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         if (savedScrollPosition >= 0) {
                             layoutManager.scrollToPositionWithOffset(savedScrollPosition, savedScrollOffset - paddingTop);
                         } else if ((!changed || !needSettleDownScrolling) && view != null) {
-                            if (pos == 0 && !needSettleDownScrolling && top > OPENED_LIST_TOP_OFFSET) {
-                                top = (int) OPENED_LIST_TOP_OFFSET;
+                            if (pos == 0 && !needSettleDownScrolling && top > openedListTopOffset) {
+                                top = (int) openedListTopOffset;
                             }
                             layoutManager.scrollToPositionWithOffset(pos, top - paddingTop);
                             layout = true;
                         } else {
-                            layoutManager.scrollToPositionWithOffset(0, (int) OPENED_LIST_TOP_OFFSET - paddingTop);
+                            layoutManager.scrollToPositionWithOffset(0, (int) openedListTopOffset - paddingTop);
                         }
                     }
                     if (currentPaddingTop != paddingTop || listView.getPaddingBottom() != paddingBottom) {
@@ -3862,7 +3818,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 final int actionBarHeight = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
                                 listView.smoothScrollBy(0, view.getTop() - getExpandedListViewOffset() + actionBarHeight, CubicBezierInterpolator.EASE_OUT_QUINT);
                             } else if (!isPulledToCollapse) {
-                                listView.smoothScrollBy(0, view.getTop() - (int) OPENED_LIST_TOP_OFFSET, CubicBezierInterpolator.EASE_OUT_QUINT);
+                                listView.smoothScrollBy(0, view.getTop() - (int) openedListTopOffset, CubicBezierInterpolator.EASE_OUT_QUINT);
                             } else {
                                 listView.smoothScrollBy(0, view.getTop(), CubicBezierInterpolator.EASE_OUT);
                             }
@@ -3964,7 +3920,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 final View view = layoutManager.findViewByPosition(0);
                 if (view != null && !openingAvatar) {
                     if (expandProgress > 0) {
-                        final int canScroll = view.getTop() - (int) OPENED_LIST_TOP_OFFSET;
+                        final int canScroll = view.getTop() - (int) openedListTopOffset;
                         if (!needSettleDownScrolling && canScroll > dy) {
                             dy = canScroll;
                             if (avatarsViewPager.hasImages() && avatarImage.getImageReceiver().hasNotThumb() && !AndroidUtilities.isAccessibilityScreenReaderEnabled() && !isInLandscapeMode && !AndroidUtilities.isTablet()) {
@@ -4804,10 +4760,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             textView.setText(LocaleController.getString(R.string.BanFromTheGroup));
             frameLayout1.addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER, 0, 1, 0, 0));
 
-            listView.setPadding(0, (int) OPENED_LIST_TOP_OFFSET, 0, AndroidUtilities.dp(48));
+            listView.setPadding(0, (int) openedListTopOffset, 0, AndroidUtilities.dp(48));
             listView.setBottomGlowOffset(AndroidUtilities.dp(48));
         } else {
-            listView.setPadding(0, (int) OPENED_LIST_TOP_OFFSET, 0, 0);
+            listView.setPadding(0, (int) openedListTopOffset, 0, 0);
         }
 
         ViewGroup decorView;
@@ -5604,12 +5560,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         TLRPC.User user = getMessagesController().getUser(userId);
         TLRPC.Chat chat = getMessagesController().getChat(chatId);
 
+        if (userId != 0 && UserObject.isUserSelf(user)) return;
+
         int buttonCounter = 0;
         buttons.clear();
         Arrays.fill(iconRes, -1);
         Arrays.fill(textRes, -1);
 
-        if (userId != 0 && !UserObject.isUserSelf(user) || !ChatObject.isChannel(chat) && ChatObject.isCanWriteToChannel(chatId, currentAccount) && buttonCounter < 4) {
+        if (userId != 0 || !ChatObject.isChannel(chat) && ChatObject.isCanWriteToChannel(chatId, currentAccount) && buttonCounter < 4) {
             buttons.add(send_message);
             iconRes[buttonCounter] = R.drawable.profile_button_message;
             textRes[buttonCounter] = R.string.Message;
@@ -5654,10 +5612,25 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             hasVoiceChatItem = true;
         }
 
+        if (userInfo != null && userInfo.phone_calls_available && chat == null && buttonCounter < 4) {
+            buttons.add(call_item);
+            iconRes[buttonCounter] = R.drawable.profile_button_call;
+            textRes[buttonCounter] = R.string.Call;
+            buttonCounter++;
+        }
+
+        boolean isVideoAvailable = userInfo != null && userInfo.video_calls_available && chat == null;
+        if (isVideoAvailable && buttonCounter < 4) {
+            buttons.add(video_call_item);
+            iconRes[buttonCounter] = R.drawable.profile_button_video;
+            textRes[buttonCounter] = R.string.GroupCallCreateVideo;
+            buttonCounter++;
+        }
+
         boolean isGiftAvailable = !BuildVars.IS_BILLING_UNAVAILABLE && !MessagesController.isSupportUser(user) && !getMessagesController().premiumPurchaseBlocked();
-        boolean isGiftForUser = userId != 0 && UserObject.isUserSelf(user) && !UserObject.isDeleted(user) && !isBot && currentEncryptedChat == null && !userBlocked;
+        boolean isGiftForUser = userId != 0 && !UserObject.isDeleted(user) && !isBot && currentEncryptedChat == null && !userBlocked;
         boolean isGiftForChat = chatId != 0 && ChatObject.isChannel(chat) && !chat.megagroup && !ChatObject.hasAdminRights(chat) && ChatObject.isInChat(chat);
-        if (!isDiscuss && isGiftAvailable && (isGiftForUser || isGiftForChat)) {
+        if (!isDiscuss && !isVideoAvailable && isGiftAvailable && (isGiftForUser || isGiftForChat)) {
             buttons.add(gift_premium);
             iconRes[buttonCounter] = R.drawable.profile_button_gift;
             textRes[buttonCounter] = R.string.ProfileGift;
@@ -5682,20 +5655,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             buttons.add(block_contact);
             iconRes[buttonCounter] = R.drawable.profile_button_block;
             textRes[buttonCounter] = R.string.Stop;
-            buttonCounter++;
-        }
-
-        if (userInfo != null && userInfo.phone_calls_available && chat == null && buttonCounter < 4) {
-            buttons.add(call_item);
-            iconRes[buttonCounter] = R.drawable.profile_button_call;
-            textRes[buttonCounter] = R.string.Call;
-            buttonCounter++;
-        }
-
-        if (userInfo != null && userInfo.video_calls_available && chat == null && buttonCounter < 4) {
-            buttons.add(video_call_item);
-            iconRes[buttonCounter] = R.drawable.profile_button_video;
-            textRes[buttonCounter] = R.string.GroupCallCreateVideo;
             buttonCounter++;
         }
 
@@ -5768,7 +5727,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         BulletinFactory.createMuteBulletin(this, !muted, null).show();
         updateExceptions();
 
-        profileButtonsLayout.updateButton(notification, LocaleController.getString(!muted ? R.string.Unmute : R.string.Mute), !muted ? R.drawable.profile_button_unmute : R.drawable.profile_button_mute);
+        updateProfileButtons(true);
     }
 
     private void onShare() {
@@ -5929,8 +5888,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         BulletinFactory.createMuteBulletin(ProfileActivity.this, NotificationsController.SETTING_MUTE_CUSTOM, timeInSeconds, getResourceProvider()).show();
                     }
                     updateExceptions();
-
-                    profileButtonsLayout.updateButton(notification, LocaleController.getString(R.string.Unmute), R.drawable.profile_button_unmute);
+                    updateProfileButtons(true);
                 }
             }
 
@@ -5952,7 +5910,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     BulletinFactory.createMuteBulletin(ProfileActivity.this, !muted, null).show();
                 }
                 updateExceptions();
-                profileButtonsLayout.updateButton(notification, LocaleController.getString(!muted ? R.string.Unmute : R.string.Mute), !muted ? R.drawable.profile_button_unmute : R.drawable.profile_button_mute);
+                updateProfileButtons(true);
             }
 
             @Override
@@ -5975,7 +5933,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private void collapseAvatarInstant() {
         if (needSettleDownScrolling && currentExpandAnimatorValue > 0) {
-            layoutManager.scrollToPositionWithOffset(0, (int) OPENED_LIST_TOP_OFFSET - listView.getPaddingTop());
+            layoutManager.scrollToPositionWithOffset(0, (int) openedListTopOffset - listView.getPaddingTop());
             listView.post(() -> {
                 needLayout(true);
                 if (expandAnimator.isRunning()) {
@@ -6067,7 +6025,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             searchItem.setClickable(searchItem.getAlpha() > .5f);
         }
 
-        if (listTopOffset > OPENED_LIST_TOP_OFFSET && expandProgress < 0.33f) {
+        if (listTopOffset > openedListTopOffset && expandProgress < 0.33f) {
             refreshNameAndOnlineXY();
         }
 
@@ -6127,7 +6085,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             statusColor = getThemedColor(Theme.key_avatar_subtitleInProfileBlue);
         }
         onlineTextView[1].setTextColor(ColorUtils.blendARGB(applyPeerColor(statusColor, true, online), 0xB3FFFFFF, value));
-        if (listTopOffset > OPENED_LIST_TOP_OFFSET) {
+        if (listTopOffset > openedListTopOffset) {
             nameTextView[1].setPivotY(AndroidUtilities.lerp(0, nameTextView[1].getMeasuredHeight(), value));
             nameTextView[1].setScaleX(AndroidUtilities.lerp(1.12f, 1.67f, value));
             nameTextView[1].setScaleY(AndroidUtilities.lerp(1.12f, 1.67f, value));
@@ -6136,7 +6094,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             showStatusButton.setBackgroundColor(ColorUtils.blendARGB(Theme.multAlpha(Theme.adaptHSV(actionBarBackgroundColor, +0.18f, -0.1f), 0.5f), 0x23ffffff, currentExpandAnimatorValue));
         }
 
-        needLayoutText(Math.min(1f, listTopOffset / OPENED_LIST_TOP_OFFSET));
+        needLayoutText(Math.min(1f, listTopOffset / openedListTopOffset));
 
         nameTextView[1].setTextColor(ColorUtils.blendARGB(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_profile_title), Color.WHITE, currentExpandAnimatorValue));
         actionBar.setItemsColor(ColorUtils.blendARGB(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon), Color.WHITE, value), false);
@@ -6165,26 +6123,26 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private void calculateCollapseProgress() {
         float idleAvatarCy = getActionBarY() + AndroidUtilities.dp(7);
-        collapseProgress = (idleAvatarCy - avatarY) / (idleAvatarCy + avatarContainer.getHeight() * MIN_AVATAR_SCALE);
+        avatarCollapseProgress = Utilities.clamp((idleAvatarCy - avatarY) / (idleAvatarCy + avatarContainer.getHeight() * MIN_AVATAR_SCALE), 1f, 0f);
         updateAvatarRect();
-        if (collapseProgress < 1 && isCollapsed) {
+        if (avatarCollapseProgress < 1 && isCollapsed) {
             isCollapsed = false;
             createActionBarMenu(false);
-        } else if (collapseProgress >= 1 && !isCollapsed) {
+        } else if (avatarCollapseProgress >= 1 && !isCollapsed) {
             isCollapsed = true;
             createActionBarMenu(false);
         }
     }
 
     private void updateAvatarRect() {
-        if (collapseProgress >= 0) {
-            float avatarScale = lerp(DEFAULT_AVATAR_SCALE, MIN_AVATAR_SCALE, collapseProgress);
+        if (avatarCollapseProgress >= 0) {
+            float avatarScale = lerp(DEFAULT_AVATAR_SCALE, MIN_AVATAR_SCALE, avatarCollapseProgress);
             float avatarW = INITIAL_AVATAR_CONTAINER_SIZE_PX * avatarScale;
             float avatarH = INITIAL_AVATAR_CONTAINER_SIZE_PX * avatarScale;
             float x = fragmentView.getWidth() / 2f - avatarW / 2f;
 
             float initialAvatarY = getActionBarY() + AndroidUtilities.dpf2(7f);
-            float y = initialAvatarY - collapseProgress * (initialAvatarY + avatarH);
+            float y = initialAvatarY - avatarCollapseProgress * (initialAvatarY + avatarH);
 
             avatarContainerRect.set(x, y, x + avatarW, y + avatarH);
         } else {
@@ -7310,7 +7268,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             updateEmojiStatusDrawableColor();
 
             if (avatarsViewPagerIndicatorView.getSecondaryMenuItem() != null && editItemVisible) {
-                needLayoutText(Math.min(1f, listTopOffset / OPENED_LIST_TOP_OFFSET));
+                needLayoutText(Math.min(1f, listTopOffset / openedListTopOffset));
             }
         }
 
@@ -7635,21 +7593,21 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
 
         if (avatarContainer != null) {
-            final float diff = Math.min(1f, listTopOffset / OPENED_LIST_TOP_OFFSET);
+            final float diff = Math.min(1f, listTopOffset / openedListTopOffset);
 
             listView.setTopGlowOffset((int) listTopOffset);
-            listView.setOverScrollMode(listTopOffset > OPENED_LIST_TOP_OFFSET && listTopOffset < getExpandedListViewOffset() - newTop ? View.OVER_SCROLL_NEVER : View.OVER_SCROLL_ALWAYS);
+            listView.setOverScrollMode(listTopOffset > openedListTopOffset && listTopOffset < getExpandedListViewOffset() - newTop ? View.OVER_SCROLL_NEVER : View.OVER_SCROLL_ALWAYS);
 
             float initialAvatarY = getActionBarY() + AndroidUtilities.dp(7f);
 
             final float durationFactor = Math.min(dpf2(2000f), Math.max(dpf2(1100f), Math.abs(listViewVelocityY))) / dpf2(1100f);
 
             float h = openAnimationInProgress ? initialAnimationListTopOffset : listTopOffset;
-            expandProgress = (h - OPENED_LIST_TOP_OFFSET) / (getExpandedListViewOffset() - newTop - OPENED_LIST_TOP_OFFSET);
-            if (h > OPENED_LIST_TOP_OFFSET || isPulledDown) {
-                collapseProgress = 0;
+            expandProgress = (h - openedListTopOffset) / (getExpandedListViewOffset() - newTop - openedListTopOffset);
+            if (h > openedListTopOffset || isPulledDown) {
+                avatarCollapseProgress = 0;
                 updateAvatarRect();
-                collapseAnimationView.setCollapseProgress(collapseProgress, false);
+                collapseAnimationView.setCollapseProgress(avatarCollapseProgress, false);
                 collapseAnimationView.setAvatarContainerRect(avatarContainerRect);
 
                 if (profileButtonsLayout != null) {
@@ -7807,26 +7765,30 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         updateCollectibleHint();
                     }
                 }
-            } else if (listTopOffset <= OPENED_LIST_TOP_OFFSET) {
+            } else if (listTopOffset <= openedListTopOffset) {
                 needSettleDownScrolling = true;
 
                 if (profileButtonsLayout != null) {
                     profileButtonsLayout.enableBackgroundBlur(false);
                 }
 
-                if (collapseProgress >= 0.2 && !openAnimationInProgress) {
+                if (avatarCollapseProgress >= 0.2 && !openAnimationInProgress) {
                     isPulledToCollapse = true;
-                } else if (collapseProgress < 0.2 && !openAnimationInProgress) {
+                } else if (avatarCollapseProgress < 0.2 && !openAnimationInProgress) {
                     isPulledToCollapse = false;
                 }
 
                 if (profileButtonsLayout != null) {
-                    float hideProgress = Utilities.clamp(listTopOffset / dp(76), 1f, 0f);
-                    profileButtonsLayout.setScale(hideProgress);
-                    profileButtonsLayout.setAlpha(lerp(1f, 0f, (1 - hideProgress) * 1.5f));
+                    if (openAnimationInProgress) {
+                        profileButtonsLayout.setTranslationY(lerp(dp(76f), getTopViewBottom() - dp(76f), avatarAnimationProgress));
+                    } else {
+                        float hideProgress = Utilities.clamp(listTopOffset / dp(76), 1f, 0f);
+                        profileButtonsLayout.setScale(hideProgress);
+                        profileButtonsLayout.setAlpha(lerp(1f, 0f, (1 - hideProgress) * 1.5f));
 
-                    if (listTopOffset >= dp(76f)) {
-                        profileButtonsLayout.setTranslationY(getTopViewBottom() - dp(76f));
+                        if (listTopOffset >= dp(76f)) {
+                            profileButtonsLayout.setTranslationY(getTopViewBottom() - dp(76f));
+                        }
                     }
                 }
 
@@ -7851,7 +7813,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         avatarContainer.setTranslationY((float) Math.ceil(avatarY));
                     } else {
                         avatarX = ((float) Math.ceil(avatarContainer2.getWidth() / 2f) - (float) Math.ceil(avatarContainer.getWidth() / 2f));
-                        avatarY = initialAvatarY - (OPENED_LIST_TOP_OFFSET - listTopOffset) / 2f;
+                        avatarY = initialAvatarY - (openedListTopOffset - listTopOffset) / 2f;
 
                         avatarContainer.setTranslationX(avatarX);
                         avatarContainer.setTranslationY((float) Math.ceil(avatarY));
@@ -7859,7 +7821,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         avatarContainer.setScaleY(avatarScale);
 
                         calculateCollapseProgress();
-                        collapseAnimationView.setCollapseProgress(collapseProgress, true);
+                        collapseAnimationView.setCollapseProgress(avatarCollapseProgress, true);
                         collapseAnimationView.setAvatarContainerRect(avatarContainerRect);
                     }
 
@@ -7898,9 +7860,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 updateCollectibleHint();
             }
 
-            if (!openAnimationInProgress && collapseProgress > 0 && collapseProgress < 1) {
+            if (!openAnimationInProgress && avatarCollapseProgress > 0 && avatarCollapseProgress < 1) {
                 collapseAnimationView.startRender(hideAvatarContainer);
-            } else if (openAnimationInProgress || collapseProgress <= 0) {
+            } else if (openAnimationInProgress || avatarCollapseProgress <= 0) {
                 collapseAnimationView.stopRender(null);
                 if (!isPulledDown) {
                     avatarContainer.setVisibility(View.VISIBLE);
@@ -8022,7 +7984,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              onlineY = Math.max(getActionBarY() + dpf2(31f), getNameAndOnlineBottom() - AndroidUtilities.dpf2(14f));
              nameY = Math.max(getActionBarY() + dpf2(2.3f), getNameAndOnlineBottom() - AndroidUtilities.dpf2(44f));
 
-             float diff = Math.max((OPENED_LIST_TOP_OFFSET - listTopOffset) / OPENED_LIST_TOP_OFFSET, 0f);
+             float diff = lerp(0f, 1f, avatarCollapseProgress * 1.1f);
              nameX = nameTextView[1] == null ? INITIAL_TEXT_X : AndroidUtilities.lerp(
                      (listView.getMeasuredWidth() / 2f - nameTextView[1].getTextWidth() / 2f - nameTextView[1].getRightDrawableWidth() / 2f),
                      dp(64),
@@ -8076,7 +8038,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private float getNameAndOnlineBottom() {
-        return getTopViewBottom() - dp(100);
+        return getTopViewBottom() - (userId != 0 && UserObject.isUserSelf(getMessagesController().getUser(userId)) ? dp(30) : dp(100));
     }
 
     private float getActionBarY() {
@@ -8094,9 +8056,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private void needLayoutText(float diff) {
         FrameLayout.LayoutParams layoutParams;
         float scale = nameTextView[1].getScaleX();
-        float maxScale = listTopOffset > OPENED_LIST_TOP_OFFSET ? 1.67f : 1.12f;
+        float maxScale = listTopOffset > openedListTopOffset ? 1.67f : 1.12f;
 
-        if (listTopOffset > OPENED_LIST_TOP_OFFSET && scale != maxScale) {
+        if (listTopOffset > openedListTopOffset && scale != maxScale) {
             return;
         }
 
@@ -8173,7 +8135,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (isInLandscapeMode && isPulledDown) {
             final View view = layoutManager.findViewByPosition(0);
             if (view != null) {
-                listView.scrollBy(0, view.getTop() - (int) OPENED_LIST_TOP_OFFSET);
+                listView.scrollBy(0, view.getTop() - (int) openedListTopOffset);
             }
         }
         fixLayout();
@@ -8637,15 +8599,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (userId != 0) {
             final TLRPC.User user = getMessagesController().getUser(userId);
             if (user != null && user.photo == null) {
-                if (listTopOffset >= OPENED_LIST_TOP_OFFSET) {
+                if (listTopOffset >= openedListTopOffset) {
                     expandAnimator.cancel();
                     expandAnimatorValues[0] = 1f;
                     expandAnimatorValues[1] = 0f;
                     setAvatarExpandProgress(1f);
                     avatarsViewPager.setVisibility(View.GONE);
-                    listTopOffset = OPENED_LIST_TOP_OFFSET;
+                    listTopOffset = openedListTopOffset;
                     needSettleDownScrolling = false;
-                    layoutManager.scrollToPositionWithOffset(0, (int) OPENED_LIST_TOP_OFFSET - listView.getPaddingTop());
+                    layoutManager.scrollToPositionWithOffset(0, (int) openedListTopOffset - listView.getPaddingTop());
                 }
             }
         }
@@ -8954,7 +8916,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     }
                     nameTextView[1].setLayoutParams(layoutParams);
 
-                    initialAnimationListTopOffset = OPENED_LIST_TOP_OFFSET;
+                    initialAnimationListTopOffset = openedListTopOffset;
                 } else {
                     FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) nameTextView[1].getLayoutParams();
                     layoutParams.width = (int) ((AndroidUtilities.displaySize.x - AndroidUtilities.dp(32)) / 1.67f);
@@ -9858,7 +9820,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             bottomPaddingRow = rowCount++;
         }
         final int actionBarHeight = actionBar != null ? ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) : 0;
-        if (listView == null || prevRowsCount > rowCount || listContentHeight != 0 && listContentHeight + actionBarHeight + (int) OPENED_LIST_TOP_OFFSET < listView.getMeasuredHeight()) {
+        if (listView == null || prevRowsCount > rowCount || listContentHeight != 0 && listContentHeight + actionBarHeight + (int) openedListTopOffset
+                < listView.getMeasuredHeight()) {
             lastMeasuredContentWidth = 0;
         }
         if (listView != null) {
@@ -10632,7 +10595,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if ((imageLocation == null || initied) && isPulledDown) {
                 final View view = layoutManager.findViewByPosition(0);
                 if (view != null) {
-                    listView.smoothScrollBy(0, view.getTop() - (int) OPENED_LIST_TOP_OFFSET, CubicBezierInterpolator.EASE_OUT_QUINT);
+                    listView.smoothScrollBy(0, view.getTop() - (int) openedListTopOffset, CubicBezierInterpolator.EASE_OUT_QUINT);
                 }
             }
             String filter;
@@ -11776,7 +11739,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                     }
                                 }
                                 int paddingHeight = (fragmentView == null ? 0 : fragmentView.getMeasuredHeight()) - ActionBar.getCurrentActionBarHeight() - AndroidUtilities.statusBarHeight - totalHeight;
-                                if (paddingHeight > OPENED_LIST_TOP_OFFSET) {
+                                if (paddingHeight > openedListTopOffset) {
                                     paddingHeight = 0;
                                 }
                                 if (paddingHeight <= 0) {
@@ -13773,8 +13736,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (view != null) {
                 savedScrollPosition = position;
                 savedScrollOffset = view.getTop();
-                if (savedScrollPosition == 0 && !needSettleDownScrolling && savedScrollOffset > OPENED_LIST_TOP_OFFSET) {
-                    savedScrollOffset = (int) OPENED_LIST_TOP_OFFSET;
+                if (savedScrollPosition == 0 && !needSettleDownScrolling && savedScrollOffset > openedListTopOffset) {
+                    savedScrollOffset = (int) openedListTopOffset;
                 }
 
                 layoutManager.scrollToPositionWithOffset(position, view.getTop() - listView.getPaddingTop());
@@ -13843,12 +13806,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
             if (sharedMediaRow == -1) {
                 if (isInLandscapeMode || AndroidUtilities.isTablet()) {
-                    listView.setPadding(0, (int) OPENED_LIST_TOP_OFFSET, 0, 0);
+                    listView.setPadding(0, (int) openedListTopOffset, 0, 0);
                     expandAnimator.cancel();
                     expandAnimatorValues[0] = 1f;
                     expandAnimatorValues[1] = 0f;
                     setAvatarExpandProgress(1f);
-                    listTopOffset = OPENED_LIST_TOP_OFFSET;
+                    listTopOffset = openedListTopOffset;
                 } else {
                     final int actionBarHeight = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
                     int ws = View.MeasureSpec.makeMeasureSpec(listView.getMeasuredWidth(), View.MeasureSpec.EXACTLY);
@@ -13860,7 +13823,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         holder.itemView.measure(ws, hs);
                         contentHeight += holder.itemView.getMeasuredHeight();
                     }
-                    int paddingBottom = Math.max(0, fragmentView.getMeasuredHeight() - (contentHeight + (int) OPENED_LIST_TOP_OFFSET + actionBarHeight));
+                    int paddingBottom = Math.max(0, fragmentView.getMeasuredHeight() - (contentHeight + (int) openedListTopOffset + actionBarHeight));
                     listView.setPadding(0, listView.getPaddingTop(), 0, paddingBottom);
                 }
             }
@@ -14260,7 +14223,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     public ShowDrawable getShowStatusButton() {
         if (showStatusButton == null) {
             showStatusButton = new ShowDrawable(LocaleController.getString(R.string.StatusHiddenShow));
-            showStatusButton.setAlpha((int) (0xFF * Math.min(1f, listTopOffset / OPENED_LIST_TOP_OFFSET)));
+            showStatusButton.setAlpha((int) (0xFF * Math.min(1f, listTopOffset / openedListTopOffset)));
             showStatusButton.setBackgroundColor(ColorUtils.blendARGB(Theme.multAlpha(Theme.adaptHSV(actionBarBackgroundColor, +0.18f, -0.1f), 0.5f), 0x23ffffff, currentExpandAnimatorValue));
         }
         return showStatusButton;
