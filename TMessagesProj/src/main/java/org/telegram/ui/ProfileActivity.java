@@ -543,6 +543,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private final static int send_message = 25;
     private final static int notification = 26;
     private final static int join = 27;
+    private final static int live_stream = 28;
+    private final static int voice_chat = 29;
 
     private final static int edit_info = 30;
     private final static int logout = 31;
@@ -559,6 +561,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private final static int copy_link_profile = 42;
     private final static int set_username = 43;
     private final static int bot_privacy = 44;
+    private final static int add_channel_story = 45;
 
     private final static float OPENED_LIST_TOP_OFFSET = dp(205f);
     public final static float INITIAL_AVATAR_CONTAINER_SIZE_PX = dp(42f);
@@ -814,6 +817,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         private final View background;
 
         private float scale = 1f;
+        private boolean enableBackgroundBlur = false;
 
         private ProfileButtonCallback listener;
 
@@ -938,10 +942,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             requestLayout();
         }
 
+        public void enableBackgroundBlur(boolean enable) {
+            if (this.enableBackgroundBlur == enable) return;
+
+            this.enableBackgroundBlur = enable;
+            for (int i = 0; i < getChildCount(); i++) {
+                View child = getChildAt(i);
+                if (child instanceof ProfileButtonView) {
+                    ((ProfileButtonView) child).enableBackgroundBlur(enableBackgroundBlur);
+                }
+            }
+
+            invalidate();
+        }
+
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int width = MeasureSpec.getSize(widthMeasureSpec);
-            int height = (int) (dp(62) * scale);
+            int height = currentButtonIds.isEmpty() ? 0 : (int) (dp(62) * scale);
             int childCount = getChildCount();
 
             if (childCount > 0) {
@@ -5408,6 +5426,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     case gift_premium:
                         onGift();
                         break;
+                    case live_stream:
+                    case voice_chat:
+                        onVoiceChat();
+                        break;
+                    case add_channel_story:
+                        onAddChannelStory();
+                        break;
                 }
             }
 
@@ -5574,6 +5599,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     int[] iconRes = new int[4];
     int[] textRes = new int[4];
     private void updateProfileButtons(boolean animated) {
+        if (profileButtonsLayout == null) return;
+
         TLRPC.User user = getMessagesController().getUser(userId);
         TLRPC.Chat chat = getMessagesController().getChat(chatId);
 
@@ -5582,18 +5609,27 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         Arrays.fill(iconRes, -1);
         Arrays.fill(textRes, -1);
 
-        if (userId != 0 && !UserObject.isUserSelf(user) || ChatObject.isCanWriteToChannel(chatId, currentAccount) && buttonCounter < 4) {
+        if (userId != 0 && !UserObject.isUserSelf(user) || !ChatObject.isChannel(chat) && ChatObject.isCanWriteToChannel(chatId, currentAccount) && buttonCounter < 4) {
             buttons.add(send_message);
             iconRes[buttonCounter] = R.drawable.profile_button_message;
             textRes[buttonCounter] = R.string.Message;
             buttonCounter++;
         }
 
-        if (ChatObject.isChannel(chat) && chat.left && !chat.kicked && buttonCounter < 4) {
+        if (ChatObject.isChannel(chat) && !ChatObject.isInChat(chat) && buttonCounter < 4) {
             buttons.add(join);
             iconRes[buttonCounter] = R.drawable.profile_button_join;
             textRes[buttonCounter] = R.string.VoipChatJoin;
             buttonCounter++;
+        }
+
+        boolean isCallAvailable = chatInfo != null && chatId != 0 && ChatObject.canManageCalls(chat) && chatInfo.call == null;
+        if (isCallAvailable && ChatObject.isChannel(chat) && !isTopic && buttonCounter < 4) {
+            buttons.add(live_stream);
+            iconRes[buttonCounter] = R.drawable.profile_button_live_stream;
+            textRes[buttonCounter] = R.string.StartVoipChannelTitle;
+            buttonCounter++;
+            hasVoiceChatItem = true;
         }
 
         boolean isMuted = getMessagesController().isDialogMuted(getDialogId(), topicId);
@@ -5610,9 +5646,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             buttonCounter++;
         }
 
+        if (isCallAvailable && !ChatObject.isChannel(chat) && buttonCounter < 4) {
+            buttons.add(voice_chat);
+            iconRes[buttonCounter] = R.drawable.profile_button_live_stream;
+            textRes[buttonCounter] = R.string.VoipGroupVoiceChat;
+            buttonCounter++;
+            hasVoiceChatItem = true;
+        }
+
         boolean isGiftAvailable = !BuildVars.IS_BILLING_UNAVAILABLE && !MessagesController.isSupportUser(user) && !getMessagesController().premiumPurchaseBlocked();
         boolean isGiftForUser = userId != 0 && UserObject.isUserSelf(user) && !UserObject.isDeleted(user) && !isBot && currentEncryptedChat == null && !userBlocked;
-        boolean isGiftForChat = chatId != 0 && ChatObject.isChannel(chat) && !chat.megagroup;
+        boolean isGiftForChat = chatId != 0 && ChatObject.isChannel(chat) && !chat.megagroup && !ChatObject.hasAdminRights(chat) && ChatObject.isInChat(chat);
         if (!isDiscuss && isGiftAvailable && (isGiftForUser || isGiftForChat)) {
             buttons.add(gift_premium);
             iconRes[buttonCounter] = R.drawable.profile_button_gift;
@@ -5627,7 +5671,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             buttonCounter++;
         }
 
-        if ((chatId != 0 && !ChatObject.isChannel(chat) || ChatObject.isChannel(chat) && !chat.creator && !chat.left && !chat.kicked) && buttonCounter < 4) {
+        if ((chatId != 0 && !ChatObject.isChannel(chat) || ChatObject.isChannel(chat) && !ChatObject.hasAdminRights(chat) && !chat.creator && ChatObject.isInChat(chat)) && buttonCounter < 4) {
             buttons.add(leave_group);
             iconRes[buttonCounter] = R.drawable.profile_button_leave;
             textRes[buttonCounter] = R.string.VoipGroupLeave;
@@ -5655,10 +5699,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             buttonCounter++;
         }
 
-        if (ChatObject.isChannel(chat) && !ChatObject.hasAdminRights(chat) && chat.left && !chat.kicked && buttonCounter < 4) {
+        if (ChatObject.isChannel(chat) && !ChatObject.hasAdminRights(chat) && !ChatObject.isInChat(chat) && buttonCounter < 4) {
             buttons.add(report);
             iconRes[buttonCounter] = R.drawable.profile_button_report;
             textRes[buttonCounter] = R.string.Report2;
+            buttonCounter++;
+        }
+
+        if (chatId != 0 && ChatObject.isChannel(chat) && ChatObject.canPostStories(chat) && ChatObject.isBoosted(chatInfo) && buttonCounter < 4) {
+            buttons.add(add_channel_story);
+            iconRes[buttonCounter] = R.drawable.profile_button_story;
+            textRes[buttonCounter] = R.string.AddStory;
             buttonCounter++;
         }
 
@@ -5800,6 +5851,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.closeSearchByActiveAction);
     }
 
+    private void onVoiceChat() {
+        ChatObject.Call call = getMessagesController().getGroupCall(chatId, false);
+        if (call == null) {
+            VoIPHelper.showGroupCallAlert(ProfileActivity.this, currentChat, null, false, getAccountInstance());
+        } else {
+            VoIPHelper.startCall(currentChat, null, null, false, getParentActivity(), ProfileActivity.this, getAccountInstance());
+        }
+    }
+
     private void onGift() {
         if (userInfo != null && UserObject.areGiftsDisabled(userInfo)) {
             BaseFragment lastFragment = LaunchActivity.getSafeLastFragment();
@@ -5812,6 +5872,32 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             MessagesController.getGlobalMainSettings().edit().putInt("channelgifthint", 3).apply();
         }
         showDialog(new GiftSheet(getContext(), currentAccount, getDialogId(), null, null));
+    }
+
+    private void onAddChannelStory() {
+        StoryRecorder.getInstance(getParentActivity(), getCurrentAccount())
+                .selectedPeerId(getDialogId())
+                .canChangePeer(false)
+                .closeToWhenSent(new StoryRecorder.ClosingViewProvider() {
+                    @Override
+                    public void preLayout(long dialogId, Runnable runnable) {
+                        avatarImage.setHasStories(needInsetForStories());
+                        if (dialogId == getDialogId()) {
+                            collapseAvatarInstant();
+                        }
+                        AndroidUtilities.runOnUIThread(runnable, 30);
+                    }
+
+                    @Override
+                    public StoryRecorder.SourceView getView(long dialogId) {
+                        if (dialogId != getDialogId()) {
+                            return null;
+                        }
+                        updateAvatarRoundRadius();
+                        return StoryRecorder.SourceView.fromAvatarImage(avatarImage, ChatObject.isForum(currentChat));
+                    }
+                })
+                .open(null);
     }
 
     private void onNotificationPressed(View view, float x, float y) {
@@ -7628,6 +7714,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             }
                         });
                         expandAnimator.start();
+
+                        if (profileButtonsLayout != null) {
+                            profileButtonsLayout.enableBackgroundBlur(true);
+                        }
                     }
 
                     ViewGroup.LayoutParams params = avatarsViewPager.getLayoutParams();
@@ -7719,6 +7809,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
             } else if (listTopOffset <= OPENED_LIST_TOP_OFFSET) {
                 needSettleDownScrolling = true;
+
+                if (profileButtonsLayout != null) {
+                    profileButtonsLayout.enableBackgroundBlur(false);
+                }
 
                 if (collapseProgress >= 0.2 && !openAnimationInProgress) {
                     isPulledToCollapse = true;
@@ -10726,7 +10820,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             createAutoDeleteItem(context);
                         }
                         otherItem.addSubItem(add_shortcut, R.drawable.msg_home, LocaleController.getString(R.string.AddShortcut));
-                        if (isBot && isCollapsed) {
+                        if (isBot && (isCollapsed || !buttons.contains(share))) {
                             otherItem.addSubItem(share, R.drawable.msg_share, LocaleController.getString(R.string.BotShare));
                         } else if (!isBot) {
                             otherItem.addSubItem(add_contact, R.drawable.msg_addcontact, LocaleController.getString(R.string.AddContact));
@@ -10742,7 +10836,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 otherItem.hideSubItem(bot_privacy);
                             }
                             otherItem.addSubItem(report, R.drawable.msg_report, LocaleController.getString(R.string.ReportBot)).setColors(getThemedColor(Theme.key_text_RedRegular), getThemedColor(Theme.key_text_RedRegular));
-                            if (!userBlocked && isCollapsed) {
+                            if (!userBlocked && (isCollapsed || !buttons.contains(block_contact))) {
                                 otherItem.addSubItem(block_contact, R.drawable.msg_block2, LocaleController.getString(R.string.DeleteAndBlock)).setColors(getThemedColor(Theme.key_text_RedRegular), getThemedColor(Theme.key_text_RedRegular));
                             } else if (userBlocked) {
                                 otherItem.addSubItem(block_contact, R.drawable.msg_retry, LocaleController.getString(R.string.BotRestart));
@@ -10763,7 +10857,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     otherItem.addSubItem(delete_contact, R.drawable.msg_delete, LocaleController.getString(R.string.DeleteContact));
                 }
                 if (!UserObject.isDeleted(user) && !isBot && currentEncryptedChat == null && !userBlocked && userId != 333000 && userId != 777000 && userId != 42777) {
-                    if (!BuildVars.IS_BILLING_UNAVAILABLE && !user.self && !user.bot && !MessagesController.isSupportUser(user) && !getMessagesController().premiumPurchaseBlocked() && isCollapsed) {
+                    if (!BuildVars.IS_BILLING_UNAVAILABLE && !user.self && !user.bot && !MessagesController.isSupportUser(user) && !getMessagesController().premiumPurchaseBlocked() && (isCollapsed || !buttons.contains(gift_premium))) {
                         StarsController.getInstance(currentAccount).loadStarGifts();
                         otherItem.addSubItem(gift_premium, R.drawable.msg_gift_premium, LocaleController.getString(R.string.ProfileSendAGift));
                     }
@@ -10792,8 +10886,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     }
                 }
                 if (chatInfo != null) {
-                    if (ChatObject.canManageCalls(chat) && chatInfo.call == null) {
-                        otherItem.addSubItem(call_item, R.drawable.msg_voicechat, chat.megagroup && !chat.gigagroup ? LocaleController.getString(R.string.StartVoipChat) : LocaleController.getString(R.string.StartVoipChannel));
+                    if (ChatObject.canManageCalls(chat) && chatInfo.call == null && chat.megagroup && !chat.gigagroup && (isCollapsed || !buttons.contains(live_stream))) {
+                        otherItem.addSubItem(call_item, R.drawable.msg_voicechat, LocaleController.getString(R.string.StartVoipChat));
+                        hasVoiceChatItem = true;
+                    }
+                    if (ChatObject.canManageCalls(chat) && chatInfo.call == null && isCollapsed && !(chat.megagroup && !chat.gigagroup) && (isCollapsed || !buttons.contains(voice_chat))) {
+                        otherItem.addSubItem(call_item, R.drawable.msg_voicechat, LocaleController.getString(R.string.StartVoipChannel));
                         hasVoiceChatItem = true;
                     }
                     if ((chatInfo.can_view_stats || chatInfo.can_view_revenue || chatInfo.can_view_stars_revenue || getMessagesController().getStoriesController().canPostStories(getDialogId())) && topicId == 0) {
@@ -10806,7 +10904,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         canSearchMembers = true;
                         otherItem.addSubItem(search_members, R.drawable.msg_search, LocaleController.getString(R.string.SearchMembers));
                     }
-                    if (!chat.creator && !chat.left && !chat.kicked && !isTopic && isCollapsed) {
+                    if (!chat.creator && !chat.left && !chat.kicked && !isTopic && (isCollapsed || !buttons.contains(leave_group))) {
                         otherItem.addSubItem(leave_group, R.drawable.msg_leave, LocaleController.getString(R.string.LeaveMegaMenu));
                     }
                     if (isTopic && ChatObject.canDeleteTopic(currentAccount, chat, topicId)) {
@@ -10816,18 +10914,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     if (chat.creator || chat.admin_rights != null && chat.admin_rights.edit_stories) {
                         otherItem.addSubItem(channel_stories, R.drawable.msg_archive, LocaleController.getString(R.string.OpenChannelArchiveStories));
                     }
-                    if (ChatObject.isPublic(chat) && isCollapsed) {
+                    if (ChatObject.isPublic(chat) && (isCollapsed || !buttons.contains(share))) {
                         otherItem.addSubItem(share, R.drawable.msg_share, LocaleController.getString(R.string.BotShare));
                     }
-                    if (!BuildVars.IS_BILLING_UNAVAILABLE && !getMessagesController().premiumPurchaseBlocked() && isCollapsed) {
+                    if (!BuildVars.IS_BILLING_UNAVAILABLE && !getMessagesController().premiumPurchaseBlocked() && (isCollapsed || !buttons.contains(gift_premium))) {
                         StarsController.getInstance(currentAccount).loadStarGifts();
                         otherItem.addSubItem(gift_premium, R.drawable.msg_gift_premium, LocaleController.getString(R.string.ProfileSendAGiftToChannel));
                         otherItem.setSubItemShown(gift_premium, chatInfo != null && chatInfo.stargifts_available);
                     }
-                    if (chatInfo != null && chatInfo.linked_chat_id != 0 && isCollapsed) {
+                    if (chatInfo != null && chatInfo.linked_chat_id != 0 && (isCollapsed || !buttons.contains(view_discussion))) {
                         otherItem.addSubItem(view_discussion, R.drawable.msg_discussion, LocaleController.getString(R.string.ViewDiscussion));
                     }
-                    if (!currentChat.creator && !currentChat.left && !currentChat.kicked && isCollapsed) {
+                    if (!currentChat.creator && !currentChat.left && !currentChat.kicked && (isCollapsed || !buttons.contains(leave_group))) {
                         otherItem.addSubItem(leave_group, R.drawable.msg_leave, LocaleController.getString(R.string.LeaveChannelMenu));
                     }
                 }

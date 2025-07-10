@@ -45,6 +45,7 @@ public class ProfileButtonView extends View {
     private String buttonText;
 
     private float scale = 1f;
+    private boolean backgroundBlur = false;
 
     private float cornerRadius;
 
@@ -127,6 +128,10 @@ public class ProfileButtonView extends View {
         textPaint.setTextSize(lerp(dp(10), dp(6), 1 - scale));
         float iconSize = dp(62) * scale - 2 * dp(8) - textPaint.getTextSize() - dp(8);
         drawable.setBounds(0, 0, (int) (iconSize), (int) (iconSize));
+    }
+
+    public void enableBackgroundBlur(boolean enable) {
+        backgroundBlur = enable;
     }
 
     public void setCornerRadius(float radius) {
@@ -257,19 +262,16 @@ public class ProfileButtonView extends View {
         canvas.save();
         canvas.clipPath(clipPath);
 
-        // Drawing background
-        if (canvas.isHardwareAccelerated() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (canvas.isHardwareAccelerated() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && backgroundBlur) {
             drawBackgroundBlur(canvas);
         }
         canvas.drawColor(Color.argb(40 + lerp(0, 20, pressedProgress), 0, 0, 0));
 
-        // Drawing icon
         canvas.save();
         canvas.translate(getWidth() / 2f - drawable.getBounds().width() / 2f, dp(8));
         drawable.draw(canvas);
         canvas.restore();
 
-        // Drawing text
         canvas.drawText(buttonText, getWidth() / 2f, getHeight() - dp(8) - textPaint.descent(), textPaint);
 
         canvas.restore();
