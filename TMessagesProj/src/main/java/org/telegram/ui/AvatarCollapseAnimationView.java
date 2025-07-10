@@ -34,6 +34,7 @@ import static android.opengl.GLES20.GL_COMPILE_STATUS;
 import static android.opengl.GLES20.GL_LINK_STATUS;
 import static android.opengl.GLES20.glClear;
 import static android.opengl.GLES20.glUseProgram;
+import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 import static org.telegram.messenger.Utilities.clamp;
 
@@ -121,7 +122,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             if (this.collapseProgress == collapseProgress) return;
 
             this.collapseProgress = collapseProgress;
-            if (collapseProgress > 1) {
+            if (collapseProgress == 1f) {
                 pauseRender();
             } else if (resume && !isRunning && isPrepared) {
                 isRunning = true;
@@ -162,7 +163,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
                 final long maxdt = (long) (1000L / Math.max(30, AndroidUtilities.screenRefreshRate));
                 while(this.isPrepared && !isReleased) {
                     long start = System.currentTimeMillis();
-                    if (isRunning) {
+                    if (this.isRunning) {
                         if (!isImageTexturePrepared) {
                             try {
                                 initImageTexture();
@@ -449,7 +450,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             GLES20.glUniform2f(uAvatarScaleLoc, textureScaleX, textureScaleY);
             GLES20.glUniform2f(uAvatarCenterTransitionLoc, (avatarContainerRect.centerX()) / (float) width, (height / 2f - avatarContainerRect.top) / avatarContainerRect.height());
 
-            GLES20.glUniform2f(uAvatarCenterLoc, avatarContainerRect.centerX(), avatarContainerRect.centerY());
+            GLES20.glUniform2f(uAvatarCenterLoc, avatarContainerRect.centerX(), avatarContainerRect.centerY() - lerp(0, dp(10), collapseProgress));
 
             GLES20.glUniform1f(uAttractionRadiusLoc, (avatarContainerRect.height() * 1.6f) / (float) height);
             GLES20.glUniform1f(uTopAttractionPointRadiusLoc, (avatarContainerRect.height()) / (float) height);
