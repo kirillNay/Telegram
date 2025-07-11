@@ -54,6 +54,7 @@ import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.BulletinFactory;
+import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.LinkPath;
 import org.telegram.ui.Components.LinkSpanDrawable;
@@ -61,7 +62,7 @@ import org.telegram.ui.Components.LoadingDrawable;
 import org.telegram.ui.Components.StaticLayoutEx;
 import org.telegram.ui.Components.URLSpanNoUnderline;
 
-import java.util.concurrent.atomic.AtomicReference;
+import static org.telegram.messenger.AndroidUtilities.dp;
 
 public class AboutLinkCell extends FrameLayout {
 
@@ -543,42 +544,8 @@ public class AboutLinkCell extends FrameLayout {
     private static final int COLLAPSED_HEIGHT = AndroidUtilities.dp(8 + 20 * 3 + 8);
     private static final int MAX_OPEN_HEIGHT = COLLAPSED_HEIGHT;// + AndroidUtilities.dp(20);
 
-    public class SpringInterpolator {
-        public float tension;
-        public float friction;
-        public SpringInterpolator(float tension, float friction) {
-            this.tension = tension;
-            this.friction = friction;
-        }
-
-        private final float mass = 1f;
-        private float position = 0, velocity = 0;
-        public float getValue(float deltaTime) {
-            deltaTime = Math.min(deltaTime, 250);
-            final float MAX_DELTA_TIME = 18;
-            while (deltaTime > 0) {
-                final float step = Math.min(deltaTime, MAX_DELTA_TIME);
-                step(step);
-                deltaTime -= step;
-            }
-            return position;
-        }
-
-        private void step(float delta) {
-            final float acceleration = (
-                -tension * 0.000001f * (position - 1f) + // spring force
-                -friction * 0.001f * velocity // damping force
-            ) / mass; // pt/ms^2
-
-            velocity = velocity + acceleration * delta; // pt/ms
-            position = position + velocity * delta;
-        }
-    }
-
     private float expandT = 0f;
-    private float rawCollapseT = 0f;
     private ValueAnimator collapseAnimator;
-    private boolean expanded = false;
     public void updateCollapse(boolean value, boolean animated) {
         if (collapseAnimator != null) {
             collapseAnimator.cancel();
@@ -592,28 +559,21 @@ public class AboutLinkCell extends FrameLayout {
                 didExtend();
             }
 
-            float fullHeight = textHeight();
-            float collapsedHeight = Math.min(COLLAPSED_HEIGHT, fullHeight);
-            float fromHeight = AndroidUtilities.lerp(collapsedHeight, fullHeight, fromValue);
-            float toHeight = AndroidUtilities.lerp(collapsedHeight, fullHeight, toValue);
-            float dHeight = Math.abs(toHeight - fromHeight);
-//            float speedMultiplier = Math.min(Math.max(dHeight / AndroidUtilities.dp(76), 0.5f), 2f);
-
             collapseAnimator = ValueAnimator.ofFloat(0, 1);
-            final float duration = Math.abs(fromValue - toValue) * 1250 * 2f;
-            final SpringInterpolator spring = new SpringInterpolator(380f, 20.17f);
-            final AtomicReference<Float> lastValue = new AtomicReference<>(fromValue);
+            collapseAnimator.setInterpolator(CubicBezierInterpolator.DEFAULT);
+            final float duration = Math.abs(fromValue - toValue) * 120 * 2f;
             collapseAnimator.addUpdateListener(a -> {
-                float now = (float) a.getAnimatedValue();
-                float deltaTime = (now - lastValue.getAndSet(now)) * 1000 * 8f;
+                expandT = (float) a.getAnimatedValue();
 
-                rawCollapseT = AndroidUtilities.lerp(fromValue, toValue, (float) a.getAnimatedValue());
-                expandT = AndroidUtilities.lerp(fromValue, toValue, spring.getValue(deltaTime));
                 if (expandT > 0.8f && container.getBackground() == null) {
                     container.setBackground(rippleBackground);
                 }
+
                 showMoreTextBackgroundView.setAlpha(1f - expandT);
                 bottomShadow.setAlpha((float) Math.pow(1f - expandT, 2f));
+
+                updateHeight();
+                container.invalidate();
 
                 updateHeight();
                 container.invalidate();
@@ -621,11 +581,11 @@ public class AboutLinkCell extends FrameLayout {
             collapseAnimator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
-                    didResizeEnd();
                     if (container.getBackground() == null) {
                         container.setBackground(rippleBackground);
                     }
-                    expanded = true;
+
+                    didResizeEnd();
                 }
 
                 @Override
@@ -674,7 +634,7 @@ public class AboutLinkCell extends FrameLayout {
     @SuppressLint("DrawAllocation")
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        checkTextLayout(MeasureSpec.getSize(widthMeasureSpec) - AndroidUtilities.dp(23 + 23), false);
+        checkTextLayout(MeasureSpec.getSize(widthMeasureSpec) - dp(23 + 23), false);
         int height = updateHeight();
         super.onMeasure(
             widthMeasureSpec,

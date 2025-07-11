@@ -534,7 +534,7 @@ public class ThemeColors {
         defaultColors[key_chat_outQuote] = 0xff6AB860;
 
         defaultColors[key_profile_creatorIcon] = 0xff3a95d5;
-        defaultColors[key_profile_actionIcon] = 0xff81868a;
+        defaultColors[key_profile_actionIcon] = 0xffffffff;
         defaultColors[key_profile_actionBackground] = 0xffffffff;
         defaultColors[key_profile_actionPressedBackground] = 0xfff2f2f2;
         defaultColors[key_profile_verifiedBackground] = 0xffb2d6f8;

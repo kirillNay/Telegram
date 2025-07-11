@@ -785,6 +785,7 @@
     <string name="CantAddBotAsAdmin">Sorry, bots can only be added to channels as administrators.</string>
     <string name="AdminWillBeRemoved">%1$s will be removed from admins if you restrict them.</string>
     <string name="Discussion">Discussion</string>
+    <string name="Discuss">Discuss</string>
     <string name="ViewDiscussion">View discussion</string>
     <string name="DiscussionInfo">Add a group chat for comments</string>
     <string name="LinkedChannel">Linked Channel</string>
@@ -5388,6 +5389,7 @@
     <string name="GiftPremiumGifting">Premium Gifting</string>
     <string name="SendAGift">Send a Gift</string>
     <string name="ProfileSendAGift">Send a Gift</string>
+    <string name="ProfileGift">Gift</string>
     <string name="ProfileSendAGiftToChannel">Send a Gift</string>
     <string name="GiftPremiumActivateForFree">Activate For Free</string>
     <string name="GiftPremiumActivateErrorTitle">You already have Telegram Premium</string>

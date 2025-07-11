@@ -2,11 +2,16 @@ package org.telegram.ui.Stars;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
+import static org.telegram.messenger.AndroidUtilities.lerp;
 
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
 
 public class StarGiftPatterns {
@@ -205,6 +210,84 @@ public class StarGiftPatterns {
                 (int) (b + dpf2(y) + dpf2(size) / 2.0f)
             );
             pattern.setAlpha((int) (0xFF * alpha * thisAlpha));
+            pattern.draw(canvas);
+        }
+    }
+
+    private static final float[] profileCenteredPattern = new float[] {
+            // radius, sin, cos, scale, alpha, min progress, max progress
+             84, 0, 1, 1, .32f,             .08f, .62f,
+            72, .5f, .87f, 1, .34f,         .05f, .44f,
+             65, 1, 0, 1, .32f,             .05f, .62f,
+            72, .5f, -.87f, 1, .34f,        .05f, .44f,
+             84, 0, -1, 1, .32f,            .08f, .62f,
+            72, -.5f, -.87f, 1, .34f,       .05f, .44f,
+             65, -1, 0, 1, .18f,            .05f, .44f,
+            72, -.5f, .87f, 1, .34f,        .05f, .44f,
+
+            86, .87f, .5f, .85f, .18f,      .05f, .74f,
+            86, .87f, -.5f, .85f, .18f,     .05f, .74f,
+            86, -.87f, -.5f, .85f, .21f,    .05f, .52f,
+            86, -.87f, .5f, .85f, .21f,     .05f, .52f,
+
+             138, 0, 1, .85f, .16f,         .08f, .74f,
+            118, .5f, .87f, .85f, .16f,     .05f, .52f,
+            118, .5f, -.87f, .85f, .16f,    .05f, .52f,
+             138, 0, -1, .85f, .16f,        .08f, .74f,
+            118, -.5f, -.87f, .85f, .16f,   .05f, .52f,
+            118, -.5f, .87f, .85f, .16f,    .05f, .52f,
+    };
+
+    public static void drawCenteredProfilePattern(
+            Canvas canvas,
+            Drawable pattern,
+            float initialCX,
+            float initialCY,
+            float alpha,
+            boolean hasCutout,
+            float avatarCX,
+            float avatarCY,
+            float progress,
+            boolean isExpanding
+    ) {
+        for (int i = 0; i < profileCenteredPattern.length; i += 7) {
+            if (hasCutout && i == 42) continue;
+
+            float rad = profileCenteredPattern[i];
+            float sin = profileCenteredPattern[i + 1];
+            float cos = profileCenteredPattern[i + 2];
+            float scale = profileCenteredPattern[i + 3];
+            float thisAlpha = profileCenteredPattern[i + 4];
+
+            float minProgress = profileCenteredPattern[i + 5];
+            float maxProgress = profileCenteredPattern[i + 6];
+
+            float p0X = initialCX + dpf2(rad * cos);
+            float p0Y = initialCY + dpf2(rad * sin);
+
+            float p1X = lerp(avatarCX, p0X, .25f);
+            float p1Y = initialCY + dpf2(rad * sin);
+
+            float p2X = avatarCX;
+            float p2Y = avatarCY;
+
+            float realProgress = Utilities.clamp((progress - minProgress) / (maxProgress -  minProgress), 1f, 0f);
+            float cx = (1 - realProgress) * (1 - realProgress) * p0X + 2 * (1 - realProgress) * realProgress * p1X + realProgress * realProgress * p2X;
+            float cy = (1 - realProgress) * (1 - realProgress) * p0Y + 2 * (1 - realProgress) * realProgress * p1Y + realProgress * realProgress * p2Y;
+
+            if (isExpanding) {
+                cy += (avatarCY - initialCY) / 2f;
+            }
+
+            float size = dpf2(24) * scale * lerp(1f, .5f, realProgress);
+
+            pattern.setBounds(
+                    (int) (cx - size / 2f),
+                    (int) (cy - size / 2f),
+                    (int) (cx + size / 2f),
+                    (int) (cy + size / 2f)
+            );
+            pattern.setAlpha((int) (0xFF * alpha * thisAlpha * lerp(1f, .5f, realProgress)));
             pattern.draw(canvas);
         }
     }

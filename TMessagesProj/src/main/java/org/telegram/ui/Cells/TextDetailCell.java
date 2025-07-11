@@ -20,11 +20,13 @@ import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import org.telegram.DebugUtils;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.Theme;
@@ -35,6 +37,7 @@ public class TextDetailCell extends FrameLayout {
 
     public final LinkSpanDrawable.LinksTextView textView;
     public final LinkSpanDrawable.LinksTextView valueTextView;
+    private boolean isFirstCell = false;
     private final TextView showMoreTextView = null;
     private final ImageView imageView;
     private boolean needDivider;
@@ -143,8 +146,21 @@ public class TextDetailCell extends FrameLayout {
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(
             MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY),
-            multiline ? heightMeasureSpec : MeasureSpec.makeMeasureSpec(dp(60) + (needDivider ? 1 : 0), MeasureSpec.EXACTLY)
+            multiline ? heightMeasureSpec : MeasureSpec.makeMeasureSpec(dp(60) + (needDivider ? 1 : 0) + (isFirstCell ? dp(12) : 0), MeasureSpec.EXACTLY)
         );
+    }
+
+    public void setIsFirst(boolean isFirst) {
+        if (isFirst == isFirstCell) return;
+
+        isFirstCell = isFirst;
+        if (isFirstCell) {
+            ((MarginLayoutParams) textView.getLayoutParams()).topMargin = dp(8 - 2 + 12);
+            ((MarginLayoutParams) valueTextView.getLayoutParams()).topMargin = dp(33 - 1 + 12);
+        } else {
+            ((MarginLayoutParams) textView.getLayoutParams()).topMargin = dp(8 - 2);
+            ((MarginLayoutParams) valueTextView.getLayoutParams()).topMargin = dp(33 - 1);
+        }
     }
 
     public void setTextAndValue(CharSequence text, CharSequence value, boolean divider) {

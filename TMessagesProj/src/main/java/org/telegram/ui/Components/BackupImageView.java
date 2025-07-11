@@ -99,7 +99,7 @@ public class BackupImageView extends View {
         }
     }
 
-    private void checkCreateBlurredImage() {
+    protected void checkCreateBlurredImage() {
         if (hasBlur && blurImageReceiver.getBitmap() == null && imageReceiver.getBitmap() != null) {
             Bitmap bitmap = imageReceiver.getBitmap();
             if (bitmap != null && !bitmap.isRecycled()) {

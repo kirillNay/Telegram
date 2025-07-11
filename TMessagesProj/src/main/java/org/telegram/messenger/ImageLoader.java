@@ -1218,6 +1218,8 @@ public class ImageLoader {
                             blurType = 3;
                         } else if (cacheImage.filter.contains("b1")) {
                             blurType = 2;
+                        } if (cacheImage.filter.contains("b3")) {
+                            blurType = 5;
                         } else if (cacheImage.filter.contains("b")) {
                             blurType = 1;
                         }
@@ -1425,6 +1427,10 @@ public class ImageLoader {
                                 }
                             } else if (blurType == 0 && opts.inPurgeable) {
                                 Utilities.pinBitmap(image);
+                            } else if (blurType == 5) {
+                                if (image.getConfig() == Bitmap.Config.ARGB_8888) {
+                                    image = Utilities.addBottomMirror(image, (int) (image.getHeight() * 0.2), (int) (image.getHeight() * 0.05));
+                                }
                             }
                         }
                     } catch (Throwable e) {
@@ -1572,16 +1578,20 @@ public class ImageLoader {
                                             b.recycle();
                                         }
                                     }
-                                    if (blurType != 0 && (bitmapH > 100 || bitmapW > 100)) {
-                                        image = Bitmaps.createScaledBitmap(image, 80, 80, false);
-                                        bitmapH = 80;
-                                        bitmapW = 80;
-                                    }
-                                    if (blurType != 0 && bitmapH < 100 && bitmapW < 100) {
-                                        if (image.getConfig() == Bitmap.Config.ARGB_8888) {
-                                            Utilities.blurBitmap(image, 3, opts.inPurgeable ? 0 : 1, image.getWidth(), image.getHeight(), image.getRowBytes());
+                                    if (blurType == 5) {
+                                        image = Utilities.addBottomMirror(image, (int) (image.getHeight() * 0.2), (int) (image.getHeight() * 0.05));
+                                    } else {
+                                        if (blurType != 0 && (bitmapH > 100 || bitmapW > 100)) {
+                                            image = Bitmaps.createScaledBitmap(image, 80, 80, false);
+                                            bitmapH = 80;
+                                            bitmapW = 80;
                                         }
-                                        blured = true;
+                                        if (blurType != 0 && bitmapH < 100 && bitmapW < 100) {
+                                            if (image.getConfig() == Bitmap.Config.ARGB_8888) {
+                                                Utilities.blurBitmap(image, 3, opts.inPurgeable ? 0 : 1, image.getWidth(), image.getHeight(), image.getRowBytes());
+                                            }
+                                            blured = true;
+                                        }
                                     }
                                 }
                             }
