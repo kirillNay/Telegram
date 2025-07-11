@@ -3,8 +3,11 @@ package org.telegram.ui;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
+import android.graphics.drawable.Drawable;
 import android.opengl.EGL14;
 import android.opengl.EGLConfig;
 import android.opengl.EGLContext;
@@ -21,6 +24,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.R;
+import org.telegram.ui.Components.VectorAvatarThumbDrawable;
 
 import javax.microedition.khronos.opengles.GL10;
 
@@ -28,6 +32,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static android.opengl.GLES20.GL_COLOR_BUFFER_BIT;
 import static android.opengl.GLES20.GL_COMPILE_STATUS;
@@ -36,6 +42,7 @@ import static android.opengl.GLES20.glClear;
 import static android.opengl.GLES20.glUseProgram;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.lerp;
+import static org.telegram.messenger.AndroidUtilities.runOnUIThread;
 import static org.telegram.messenger.Utilities.clamp;
 
 @SuppressLint("ViewConstructor")
@@ -335,11 +342,30 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
             GLES31.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         }
 
+        private Bitmap recycleAvatarBitmap = null;
         private void initImageTexture() throws InternalRenderException {
             if (isImageTexturePrepared) return;
 
             Bitmap avatarBitmap;
-            if (imageReceiver.getAnimation() != null) {
+            Drawable drawable = imageReceiver.getDrawable();
+            if (drawable instanceof VectorAvatarThumbDrawable) {
+                DebugUtils.logValue(avatarContainerRect);
+                CountDownLatch latch = new CountDownLatch(1);
+                recycleAvatarBitmap = avatarBitmap = Bitmap.createBitmap((int) avatarContainerRect.width(), (int) avatarContainerRect.height(), Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(avatarBitmap);
+                runOnUIThread(() -> {
+                    Rect savedBounds = drawable.getBounds();
+                    drawable.setBounds(0, 0, avatarBitmap.getWidth(), avatarBitmap.getHeight());
+                    drawable.draw(canvas);
+                    drawable.setBounds(savedBounds);
+                    latch.countDown();
+                });
+                try {
+                    latch.await();
+                } catch (InterruptedException e) {
+                    DebugUtils.error(e);
+                }
+            } else if (imageReceiver.getAnimation() != null) {
                 imageReceiver.getAnimation().updateCurrentFrame(System.currentTimeMillis(), false);
                 avatarBitmap = imageReceiver.getAnimation().getAnimatedBitmap();
             } else {
@@ -463,6 +489,11 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
 
             if (isPrepared) {
                 recycle();
+            }
+
+            if (recycleAvatarBitmap != null) {
+                recycleAvatarBitmap.recycle();
+                recycleAvatarBitmap = null;
             }
 
             if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
