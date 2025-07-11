@@ -5564,7 +5564,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         Arrays.fill(iconRes, -1);
         Arrays.fill(textRes, -1);
 
-        if (userId != 0 || !ChatObject.isChannel(chat) && ChatObject.isCanWriteToChannel(chatId, currentAccount) && buttonCounter < 4) {
+        boolean writeToUser = userId != 0;
+        boolean writeToGroup = ChatObject.isCanWriteToChannel(chatId, currentAccount);
+        if ((writeToUser || writeToGroup) && buttonCounter < 4) {
             buttons.add(send_message);
             iconRes[buttonCounter] = R.drawable.profile_button_message;
             textRes[buttonCounter] = R.string.Message;
