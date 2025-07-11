@@ -8151,6 +8151,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (sharedMediaLayout != null) {
             sharedMediaLayout.onConfigurationChanged(newConfig);
         }
+        if (avatarContainer2 != null && collapseAnimationView != null) {
+            avatarContainer2.removeView(collapseAnimationView);
+            collapseAnimationView = new AvatarCollapseAnimationView(getContext(), avatarImage.getImageReceiver());
+            avatarContainer2.addView(collapseAnimationView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        }
         invalidateIsInLandscapeMode();
         if (isInLandscapeMode && isPulledDown) {
             final View view = layoutManager.findViewByPosition(0);
