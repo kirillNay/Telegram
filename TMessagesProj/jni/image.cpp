@@ -1274,24 +1274,46 @@ inline static void blend8888Pixels(uint8_t* top, int32_t topOffset, uint8_t* bot
     bottom[bottomOffset + 3] = std::max(aA, aB);
 }
 
-JNIEXPORT void Java_org_telegram_messenger_Utilities_addBottomBlurredMirror(JNIEnv *env, jclass clazz, jobject bitmap, jint srcHeight, jint bottomMirrorHeight, jint blurRadius, jint gradientRadius) {
-    if (!bitmap) {
+JNIEXPORT void Java_org_telegram_messenger_Utilities_addBottomBlurredMirror(JNIEnv *env, jclass clazz, jobject bitmap, jobject blurredBitmap, jint srcHeight, jint bottomMirrorHeight, jint gradientRadius) {
+    if (!bitmap || !blurredBitmap) {
         return;
     }
 
-    AndroidBitmapInfo info;
-    if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) {
+    // Getting originalBitmapInfo on original bitmap
+    AndroidBitmapInfo originalBitmapInfo;
+    if (AndroidBitmap_getInfo(env, bitmap, &originalBitmapInfo) != ANDROID_BITMAP_RESULT_SUCCESS) {
         return;
     }
 
-    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
+    if (originalBitmapInfo.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
         return;
     }
 
-    uint32_t width = info.width;
-    uint32_t stride = info.stride;
+    uint32_t height = originalBitmapInfo.height;
+    uint32_t width = originalBitmapInfo.width;
+    uint32_t stride = originalBitmapInfo.stride;
 
-    if (info.height != srcHeight + bottomMirrorHeight) {
+    AndroidBitmapInfo blurredBitmapInfo;
+    if (AndroidBitmap_getInfo(env, blurredBitmap, &blurredBitmapInfo) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        return;
+    }
+
+    if (blurredBitmapInfo.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
+        return;
+    }
+
+    uint32_t blurredHeight = blurredBitmapInfo.height;
+    uint32_t blurredWidth = blurredBitmapInfo.width;
+    uint32_t blurredStride = blurredBitmapInfo.stride;
+
+    __android_log_print(ANDROID_LOG_DEBUG, "BitmapCheck", "blurredWidth=%d, blurredStride=%d, blurredHeight=%d, width=%d, stride=%d, height=%d",
+                        blurredWidth, blurredStride, blurredHeight, width, stride, height);
+
+    if (blurredWidth != width || blurredHeight != srcHeight || stride != blurredStride) {
+        __android_log_print(ANDROID_LOG_ERROR, "BitmapCheck", "Blurred image must be the same size as original");
+    }
+
+    if (gradientRadius > bottomMirrorHeight || stride < width * 4) {
         return;
     }
 
@@ -1300,19 +1322,26 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_addBottomBlurredMirror(JNIE
         return;
     }
 
-    if (bottomMirrorHeight + gradientRadius >= srcHeight || gradientRadius > bottomMirrorHeight || stride <= width * 2) {
+    uint8_t *blurredPixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, blurredBitmap, (void **) &blurredPixels) < 0) {
         return;
     }
 
-    // Getting last bottomMirrorHeight lines of pixels to blur
-    auto* pixelsToBlur = new uint8_t[(bottomMirrorHeight) * stride];
-    memcpy(pixelsToBlur, pixels + (srcHeight - bottomMirrorHeight) * stride, bottomMirrorHeight * stride);
+    __android_log_print(ANDROID_LOG_ERROR, "BitmapCheck", "srcHeight=%d, mirror=%d, gradient=%d, totalHeight=%d, actual=%d",
+                        srcHeight, bottomMirrorHeight, gradientRadius, srcHeight + bottomMirrorHeight, originalBitmapInfo.height);
 
+    __android_log_print(ANDROID_LOG_DEBUG, "BitmapCheck", "Getting last bottomMirrorHeight lines of pixels to blur...");
+
+    // Getting last bottomMirrorHeight lines of blurred pixels
+    auto* bottomMirrorPixels = new uint8_t[(bottomMirrorHeight + gradientRadius) * stride];
+    memcpy(bottomMirrorPixels, blurredPixels + (srcHeight - bottomMirrorHeight - gradientRadius) * stride, (bottomMirrorHeight + gradientRadius) * stride);
+
+    __android_log_print(ANDROID_LOG_DEBUG, "BitmapCheck", "Flipping lines for mirroring...");
     // Flipping lines for mirroring
     auto* tmp = new uint8_t [stride];
-    for (int i = 0; i < bottomMirrorHeight / 2; i++) {
-        uint8_t* topRow = pixelsToBlur + stride * i;
-        uint8_t* bottomRow = pixelsToBlur + (bottomMirrorHeight - 1 - i) * stride;
+    for (int i = 0; i < (bottomMirrorHeight + gradientRadius) / 2; i++) {
+        uint8_t* topRow = bottomMirrorPixels + stride * i;
+        uint8_t* bottomRow = bottomMirrorPixels + (bottomMirrorHeight + gradientRadius - 1 - i) * stride;
 
         memcpy(tmp, topRow, stride);
         memcpy(topRow, bottomRow, stride);
@@ -1320,32 +1349,35 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_addBottomBlurredMirror(JNIE
     }
     delete[] tmp;
 
-    // Blurring mirrored area
-    stackBlurBitmap(width, srcHeight, stride, pixelsToBlur, blurRadius);
-
+    __android_log_print(ANDROID_LOG_DEBUG, "BitmapCheck", "Alpha for gradient...");
     // Alpha for gradient
-    for (int i = 0; i < gradientRadius; i++) {
+    for (int i = 0; i <= gradientRadius; i++) {
         float alpha = static_cast<float>(i) / static_cast<float>(gradientRadius);
 
         for (int j = 0; j < stride; j++) {
             int offset = i * stride + j * 4 + 3;
-            pixelsToBlur[offset] = static_cast<uint8_t>(alpha * 255.0f);
+            bottomMirrorPixels[offset] = static_cast<uint8_t>(alpha * 255.0f);
         }
     }
 
+    __android_log_print(ANDROID_LOG_DEBUG, "BitmapCheck", "Blending pixels...");
     for (int i = 0; i < gradientRadius; i++) {
         int rowY = srcHeight - gradientRadius + i;
         for (int j = 0; j < width; j++) {
             int offset = i * stride + j * 4;
             int baseOffset = rowY * stride + j * 4;
-            blend8888Pixels(pixelsToBlur, offset, pixels, baseOffset);
+            blend8888Pixels(bottomMirrorPixels, offset, pixels, baseOffset);
         }
     }
 
-    memcpy(pixels + srcHeight * stride, pixelsToBlur + gradientRadius * stride, (bottomMirrorHeight - gradientRadius) * stride);
+    memcpy(pixels + srcHeight * stride,
+           bottomMirrorPixels + gradientRadius * stride,
+           bottomMirrorHeight * stride
+    );
 
-    delete[] pixelsToBlur;
+    delete[] bottomMirrorPixels;
     AndroidBitmap_unlockPixels(env, bitmap);
+    AndroidBitmap_unlockPixels(env, blurredBitmap);
 }
 
 }
