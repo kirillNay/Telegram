@@ -30,6 +30,7 @@ import androidx.core.graphics.ColorUtils;
 
 import com.google.zxing.common.detector.MathUtils;
 
+import org.telegram.DebugUtils;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
@@ -80,7 +81,6 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
 
     private boolean attached;
     Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private boolean lastDrawnStateIsFailed;
     private RadialProgress radialProgress;
     private boolean progressWasDrawn;
     private boolean progressIsDone;
@@ -411,6 +411,8 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     public void setExpandProgress(float progress) {
         if (this.expandProgress != progress) {
             this.expandProgress = progress;
+            DebugUtils.logValue(expandProgress);
+            setAlpha(lerp(1.0f, 0.0f, Utilities.clamp(expandProgress * 4, 1f, 0f)));
             invalidate();
         }
     }
@@ -481,11 +483,9 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         newStoryBounce.start();
     }
 
-    float w;
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
-        float rright = rightAnimated.set(this.right);
         float avatarPullProgress = Utilities.clamp((avatarContainer.getScaleX() - 1f) / 0.4f, 1f, 0f);
         float insetMain = AndroidUtilities.lerp(AndroidUtilities.dpf2(4f), AndroidUtilities.dpf2(3.5f), avatarPullProgress);
         insetMain *= progressToInsets;
@@ -517,7 +517,8 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
             Collections.sort(circles, (a, b) -> (int) (b.cachedIndex - a.cachedIndex));
         }
 
-        float segmentsAlpha = clamp(1f - expandProgress / 0.2f, 1, 0);
+        float segmentsAlpha = 1f;
+
         boolean isFailed = storiesController.isLastUploadingFailed(dialogId);
         boolean hasUploadingStories = storiesController.hasUploadingStories(dialogId);
         if (!hasUploadingStories && lastUploadingStory != null && lastUploadingStory.canceled) {
@@ -532,7 +533,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         canvas.save();
         canvas.scale(bounceScale, bounceScale, rect1.centerX(), rect1.centerY());
 
-        float cy = lerp(rect1.centerY(), this.expandY, expandProgress);
+        float cy = rect1.centerY();
 
         Paint unreadPaint = null;
         lastUploadingStory = null;
@@ -582,8 +583,9 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         } else {
             progressWasDrawn = false;
         }
+
         if (progressToUploading < 1f) {
-            segmentsAlpha = clamp(1f - expandProgress / 0.2f, 1, 0) * (1f - progressToUploading);
+            segmentsAlpha = 1f * (1f - progressToUploading);
             final float segmentsCount = segmentsCountAnimated.set(count);
             final float segmentsUnreadCount = segmentsUnreadCountAnimated.set(unreadCount);
 
@@ -660,103 +662,6 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
                     a -= widthAngle * appear + separatorAngle * appear;
                 }
             }
-        }
-
-        final float expandRight = getExpandRight();
-        if (expandProgress > 0 && segmentsAlpha < 1) {
-            float ix = 0;
-            w = 0;
-            for (int i = 0; i < circles.size(); ++i) {
-                StoryCircle circle = circles.get(i);
-                float scale = circle.cachedScale;
-                w += dp(14) * scale;
-            }
-            for (int i = 0; i < circles.size(); ++i) {
-                StoryCircle circle = circles.get(i);
-
-                float scale = circle.cachedScale;
-                float read = circle.cachedRead;
-
-                float r = dp(28) / 2f * scale;
-//                float cx = left + r + ix;
-                float cx = expandRight - w + r + ix;
-                ix += dp(18) * scale;
-
-                maxX = Math.max(maxX, cx + r);
-
-                rect2.set(cx - r, cy - r, cx + r, cy + r);
-                lerpCentered(rect1, rect2, expandProgress, rect3);
-
-                circle.cachedRect.set(rect3);
-                circle.borderRect.set(rect3);
-                final float inset = lerp(dpf2(2.66f), lerp(dpf2(1.33f), dpf2(2.33f), expandProgress), read * expandProgress);
-                circle.borderRect.inset(-inset * scale, -inset * scale);
-            }
-            readPaint.setColor(ColorUtils.blendARGB(0x5affffff, 0x80BBC4CC, expandProgress));
-            readPaintAlpha = readPaint.getAlpha();
-            unreadPaint = gradientTools.getPaint(rect2);
-            unreadPaint.setStrokeWidth(lerp(dpf2(2.33f), dpf2(1.5f), expandProgress));
-            readPaint.setStrokeWidth(lerp(dpf2(1.125f), dpf2(1.5f), expandProgress));
-            if (expandProgress > 0) {
-                for (int i = 0; i < circles.size(); ++i) {
-                    StoryCircle circle = circles.get(i);
-                    int wasAlpha = whitePaint.getAlpha();
-                    whitePaint.setAlpha((int) (wasAlpha * expandProgress));
-                    canvas.drawCircle(
-                            circle.cachedRect.centerX(),
-                            circle.cachedRect.centerY(),
-                            Math.min(circle.cachedRect.width(), circle.cachedRect.height()) / 2f +
-                                    lerp(
-                                            dpf2(2.66f) + unreadPaint.getStrokeWidth() / 2f,
-                                            dpf2(2.33f) - readPaint.getStrokeWidth() / 2f,
-                                            circle.cachedRead
-                                    ) * expandProgress,
-                            whitePaint
-                    );
-                    whitePaint.setAlpha(wasAlpha);
-                }
-            }
-            for (int i = 0; i < circles.size(); ++i) {
-                StoryCircle B = circles.get(i);
-                StoryCircle A = nearest(i - 2 >= 0 ? circles.get(i - 2) : null, i - 1 >= 0 ? circles.get(i - 1) : null, B);
-                StoryCircle C = nearest(i + 1 < circles.size() ? circles.get(i + 1) : null, i + 2 < circles.size() ? circles.get(i + 2) : null, B);
-
-                if (A != null && (
-                        Math.abs(A.borderRect.centerX() - B.borderRect.centerX()) < Math.abs(B.borderRect.width() / 2f - A.borderRect.width() / 2f) ||
-                                Math.abs(A.borderRect.centerX() - B.borderRect.centerX()) > A.borderRect.width() / 2f + B.borderRect.width() / 2f
-                )) {
-                    A = null;
-                }
-                if (C != null && (
-                        Math.abs(C.borderRect.centerX() - B.borderRect.centerX()) < Math.abs(B.borderRect.width() / 2f - C.borderRect.width() / 2f) ||
-                                Math.abs(C.borderRect.centerX() - B.borderRect.centerX()) > C.borderRect.width() / 2f + B.borderRect.width() / 2f
-                )) {
-                    C = null;
-                }
-
-                if (B.cachedRead < 1) {
-                    unreadPaint.setAlpha((int) (0xFF * B.cachedScale * (1f - B.cachedRead) * (1f - segmentsAlpha)));
-                    drawArcs(canvas, A, B, C, unreadPaint);
-                }
-                if (B.cachedRead > 0) {
-                    readPaint.setAlpha((int) (readPaintAlpha * B.cachedScale * B.cachedRead * (1f - segmentsAlpha)));
-                    drawArcs(canvas, A, B, C, readPaint);
-                }
-            }
-            canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), (int) (0xFF * expandProgress * (1f - segmentsAlpha)), Canvas.ALL_SAVE_FLAG);
-            for (int i = circles.size() - 1; i >= 0; i--) {
-                StoryCircle circle = circles.get(i);
-                if (!circle.imageReceiver.getVisible()) {
-                    continue;
-                }
-                int r = canvas.getSaveCount();
-                final StoryCircle nextCircle = nearest(i - 1 >= 0 ? circles.get(i - 1) : null, i - 2 >= 0 ? circles.get(i - 2) : null, circle);
-                clipCircle(canvas, circle, nextCircle);
-                circle.imageReceiver.setImageCoords(circle.cachedRect);
-                circle.imageReceiver.draw(canvas);
-                canvas.restoreToCount(r);
-            }
-            canvas.restore();
         }
 
         if (unreadPaint != null) {
@@ -881,93 +786,8 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         }
     }
 
-    private void drawArcs(Canvas canvas, StoryCircle A, StoryCircle B, StoryCircle C, Paint paint) {
-        if (A == null && C == null) {
-            drawArc(canvas, B.borderRect, 0, 360, false, paint);
-        } else if (A != null && C != null) {
-            float xA = A.borderRect.centerX(), rA = A.borderRect.width() / 2f;
-            float xB = B.borderRect.centerX(), rB = B.borderRect.width() / 2f;
-            float xC = C.borderRect.centerX(), rC = C.borderRect.width() / 2f;
-
-            boolean d1, d2;
-            float mx, d, angle, angle1, angle2;
-            if (d1 = xA > xB) {
-                mx = ((xA - rA) + (xB + rB)) / 2f;
-                d = Math.abs(mx - xB);
-                angle1 = (float) Math.toDegrees(Math.acos(d / rB));
-            } else {
-                mx = ((xA + rA) + (xB - rB)) / 2f;
-                d = Math.abs(mx - xB);
-                angle1 = (float) Math.toDegrees(Math.acos(d / rB));
-            }
-
-            if (d2 = xC > xB) {
-                mx = ((xC - rC) + (xB + rB)) / 2f;
-                d = Math.abs(mx - xB);
-                angle2 = (float) Math.toDegrees(Math.acos(d / rB));
-            } else {
-                mx = ((xC + rC) + (xB - rB)) / 2f;
-                d = Math.abs(mx - xB);
-                angle2 = (float) Math.toDegrees(Math.acos(d / rB));
-            }
-
-            if (d1 && d2) {
-                angle = Math.max(angle1, angle2);
-                drawArc(canvas, B.borderRect, angle, 360 - angle * 2, false, paint);
-            } else if (d1) { // d1 && !d2
-                drawArc(canvas, B.borderRect, 180 + angle2, 180 - (angle1 + angle2), false, paint);
-                drawArc(canvas, B.borderRect, angle1, 180 - angle2 - angle1, false, paint);
-            } else if (d2) { // !d1 && d2
-                drawArc(canvas, B.borderRect, 180 + angle1, 180 - (angle2 + angle1), false, paint);
-                drawArc(canvas, B.borderRect, angle2, 180 - angle2 - angle1, false, paint);
-            } else { // !d1 && !d2
-                angle = Math.max(angle1, angle2);
-                drawArc(canvas, B.borderRect, 180 + angle, 360 - angle * 2, false, paint);
-            }
-
-        } else if (A != null || C != null) {
-            if (A == null) {
-                A = C;
-            }
-            float xA = A.borderRect.centerX(), rA = A.borderRect.width() / 2f;
-            float xB = B.borderRect.centerX(), rB = B.borderRect.width() / 2f;
-
-            if (Math.abs(xA - xB) > rA + rB) {
-                drawArc(canvas, B.borderRect, 0, 360, false, paint);
-            } else {
-                float mx, d;
-                if (xA > xB) {
-                    mx = ((xA - rA) + (xB + rB)) / 2f;
-                    d = Math.abs(mx - xB);
-                    float angle = (float) Math.toDegrees(Math.acos(d / rB));
-                    drawArc(canvas, B.borderRect, angle, 360 - angle * 2, false, paint);
-                } else {
-                    mx = ((xA + rA) + (xB - rB)) / 2f;
-                    d = Math.abs(mx - xB);
-                    float angle = (float) Math.toDegrees(Math.acos(d / rB));
-                    drawArc(canvas, B.borderRect, 180 + angle, 360 - angle * 2, false, paint);
-                }
-            }
-        }
-    }
-
-    private void lerpCentered(RectF a, RectF b, float t, RectF c) {
-        float cx = lerp(a.centerX(), b.centerX(), t);
-        float cy = lerp(a.centerY(), b.centerY(), t);
-        float r = lerp(
-            Math.min(a.width(), a.height()),
-            Math.min(b.width(), b.height()),
-            t
-        ) / 2f;
-        c.set(cx - r, cy - r, cx + r, cy + r);
-    }
-
     private float left, right, cy;
-    private float expandRight, expandY;
-    private boolean expandRightPad;
-    private final AnimatedFloat expandRightPadAnimated = new AnimatedFloat(this, 0, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
     private final AnimatedFloat rightAnimated = new AnimatedFloat(this, 0, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
-
     public void setBounds(float left, float right, float cy, boolean animated) {
         boolean changed = Math.abs(left - this.left) > 0.1f || Math.abs(right - this.right) > 0.1f || Math.abs(cy - this.cy) > 0.1f;
         this.left = left;
@@ -979,13 +799,6 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         if (changed) {
             invalidate();
         }
-    }
-
-    public void setExpandCoords(float right, boolean rightPadded, float y) {
-        this.expandRight = right;
-        this.expandRightPad = rightPadded;
-        this.expandY = y;
-        invalidate();
     }
 
     @Override
@@ -1108,18 +921,11 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     private long tapTime;
     private float tapX, tapY;
 
-    private float getExpandRight() {
-        return expandRight - expandRightPadAnimated.set(expandRightPad) * dp(71);
-    }
-
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        boolean hit;
-        if (expandProgress < .9f) {
-            hit = rect2.contains(event.getX(), event.getY());
-        } else {
-            hit = event.getX() >= getExpandRight() - w - dp(32) && event.getX() <= getExpandRight() + dp(32) && Math.abs(event.getY() - expandY) < dp(32);
-        }
+        if (expandProgress > 0.5) return false;
+
+        boolean hit = rect2.contains(event.getX(), event.getY());
         if (hit && event.getAction() == MotionEvent.ACTION_DOWN) {
             tapTime = System.currentTimeMillis();
             tapX = event.getX();

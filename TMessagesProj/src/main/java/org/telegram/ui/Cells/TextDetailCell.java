@@ -168,8 +168,6 @@ public class TextDetailCell extends FrameLayout {
         valueTextView.setText(value);
         needDivider = divider;
         setWillNotDraw(!needDivider);
-
-        DebugUtils.logValue(text, isFirstCell);
     }
 
     public void setImage(Drawable drawable) {
