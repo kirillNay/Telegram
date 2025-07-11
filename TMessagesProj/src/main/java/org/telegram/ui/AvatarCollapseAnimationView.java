@@ -130,7 +130,7 @@ public class AvatarCollapseAnimationView extends TextureView implements TextureV
 
             this.collapseProgress = collapseProgress;
             if (collapseProgress == 1f) {
-                pauseRender();
+                postRunnable(this::pauseRender);
             } else if (resume && !isRunning && isPrepared) {
                 isRunning = true;
             }
